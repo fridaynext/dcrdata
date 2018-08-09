@@ -21,6 +21,7 @@ import (
 	"sync"
 	"time"
 
+	"github.com/fridaynext/dcrdata/wallet"
 	"github.com/decred/dcrd/chaincfg/chainhash"
 	"github.com/decred/dcrd/rpcclient"
 	"github.com/decred/dcrdata/api"
@@ -111,6 +112,13 @@ func mainCore() error {
 		log.Infof("Bye!")
 		time.Sleep(250 * time.Millisecond)
 	}()
+
+	// Initialize the dcrwallet funcs for accessing the dcrwallet daemons. This creates its own RPC
+	//  connections since the dcrwallet daemons listen on a different port from the dcrd RPC server
+	dcrwalletClient1 := wallet.NewWalletClient(cfg.WalletServer1, cfg.DcrdUser, cfg.DcrdPass, cfg.DcrdCert, cfg.DisableDaemonTLS)
+	dcrwalletClient2 := wallet.NewWalletClient(cfg.WalletServer2, cfg.DcrdUser, cfg.DcrdPass, cfg.DcrdCert, cfg.DisableDaemonTLS)
+	dcrwalletClient3 := wallet.NewWalletClient(cfg.WalletServer3, cfg.DcrdUser, cfg.DcrdPass, cfg.DcrdCert, cfg.DisableDaemonTLS)
+	dcrwalletClient4 := wallet.NewWalletClient(cfg.WalletServer4, cfg.DcrdUser, cfg.DcrdPass, cfg.DcrdCert, cfg.DisableDaemonTLS)
 
 	// Display connected network
 	curnet, err := dcrdClient.GetCurrentNet()
@@ -492,7 +500,7 @@ func mainCore() error {
 	}
 
 	// Start web API
-	app := api.NewContext(dcrdClient, activeChain, &baseDB, auxDB, cfg.IndentJSON)
+	app := api.NewContext(dcrdClient, dcrwalletClient1, dcrwalletClient2, dcrwalletClient3, dcrwalletClient4, activeChain, &baseDB, auxDB, cfg.IndentJSON)
 	// Start notification hander to keep /status up-to-date
 	wg.Add(1)
 	go app.StatusNtfnHandler(&wg, quit)

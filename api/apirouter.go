@@ -36,6 +36,14 @@ func NewAPIRouter(app *appContext, userRealIP bool) apiMux {
 	mux.Get("/status", app.status)
 	mux.Get("/supply", app.coinSupply)
 
+	// Added for fridaynext tracking of all wallets
+	mux.Route("/wallet", func(r chi.Router) {
+		r.Get("/accounts", app.Wallet.GetAccounts)
+		r.Get("/transactions", app.Wallet.GetTransactions)
+		r.Get("/unspent", app.Wallet.GetUnspent)
+		r.Get("/balance", app.Wallet.GetBalance)
+	})
+
 	mux.Route("/block", func(r chi.Router) {
 		r.Route("/best", func(rd chi.Router) {
 			rd.Use(app.BlockIndexLatestCtx)

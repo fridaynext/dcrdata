@@ -17,6 +17,7 @@ import (
 	"github.com/decred/dcrd/chaincfg"
 	"github.com/decred/dcrd/dcrjson"
 	"github.com/decred/dcrd/rpcclient"
+	"github.com/fridaynext/dcrwallet/wallet"
 	apitypes "github.com/decred/dcrdata/api/types"
 	"github.com/decred/dcrdata/db/dbtypes"
 	"github.com/decred/dcrdata/explorer"
@@ -98,6 +99,7 @@ type appContext struct {
 	nodeClient    *rpcclient.Client
 	Params        *chaincfg.Params
 	BlockData     DataSourceLite
+	Wallet	      *wallet.Wallet
 	AuxDataSource DataSourceAux
 	LiteMode      bool
 	Status        apitypes.Status
@@ -107,7 +109,7 @@ type appContext struct {
 
 // NewContext constructs a new appContext from the RPC client, primary and
 // auxiliary data sources, and JSON indentation string.
-func NewContext(client *rpcclient.Client, params *chaincfg.Params, dataSource DataSourceLite, auxDataSource DataSourceAux, JSONIndent string) *appContext {
+func NewContext(client *rpcclient.Client, dcrwalletClient1 *wallet.Wallet, dcrwalletClient2 *wallet.Wallet, dcrwalletClient3 *wallet.Wallet, dcrwalletClient4 *wallet.Wallet, params *chaincfg.Params, dataSource DataSourceLite, auxDataSource DataSourceAux, JSONIndent string) *appContext {
 	conns, _ := client.GetConnectionCount()
 	nodeHeight, _ := client.GetBlockCount()
 
@@ -119,6 +121,7 @@ func NewContext(client *rpcclient.Client, params *chaincfg.Params, dataSource Da
 		nodeClient:    client,
 		Params:        params,
 		BlockData:     dataSource,
+		Wallet:	       dcrwalletClient,
 		AuxDataSource: auxDataSource,
 		LiteMode:      liteMode,
 		Status: apitypes.Status{

@@ -61,6 +61,15 @@ var (
 	defaultPGUser   = "dcrdata"
 	defaultPGPass   = ""
 	defaultPGDBName = "dcrdata"
+
+	// default Account
+	defaultWalletServer1 = "127.0.0.1:19101"
+	// june-coins Account
+	defaultWalletServer2 = "127.0.0.1:19102"
+	// staking-rewards
+	defaultWalletServer3 = "127.0.0.1:19103"
+	// Hot Wallet (Voter)
+	defaultWalletServer4 = "127.0.0.1:9110"
 )
 
 type config struct {
@@ -116,6 +125,11 @@ type config struct {
 	DcrdServ         string `long:"dcrdserv" description:"Hostname/IP and port of dcrd RPC server to connect to (default localhost:9109, testnet: localhost:19109, simnet: localhost:19556)"`
 	DcrdCert         string `long:"dcrdcert" description:"File containing the dcrd certificate file"`
 	DisableDaemonTLS bool   `long:"nodaemontls" description:"Disable TLS for the daemon RPC client -- NOTE: This is only allowed if the RPC client is connecting to localhost"`
+	
+	WalletServer1	string `long:"walletserver1" description:"Hostname/IP and port where dcrwallet (default account) is listening on"`
+	WalletServer2   string `long:"walletserver2" description:"Hostname/IP and port where dcrwallet (june-coins account) is listening on"`
+	WalletServer3   string `long:"walletserver3" description:"Hostname/IP and port where dcrwallet (staking-rewards account) is listening on"`
+	WalletServer4   string `long:"walletserver4" description:"Hostname/IP and port where dcrwallet (hot voter account) is listening on"`
 }
 
 var (
@@ -140,6 +154,10 @@ var (
 		PGUser:             defaultPGUser,
 		PGPass:             defaultPGPass,
 		PGHost:             defaultPGHost,
+		WalletServer1:	    defaultWalletServer1,
+		WalletServer2:	    defaultWalletServer2,
+		WalletServer3:	    defaultWalletServer3,
+		WalletServer4:	    defaultWalletServer4,
 	}
 )
 
@@ -429,6 +447,21 @@ func loadConfig() (*config, error) {
 	if cfg.DcrdServ == "" {
 		cfg.DcrdServ = defaultHost + ":" + activeNet.JSONRPCClientPort
 	}
+
+	// Set the host name and port of the walletservers
+	// if the user does not specify them
+	if cfg.WalletServer1 == "" {
+		cfg.WalletServer1 = defaultWalletServer1
+	}
+	if cfg.WalletServer2 == "" {
+                cfg.WalletServer2 = defaultWalletServer2
+        }
+	if cfg.WalletServer3 == "" {
+                cfg.WalletServer3 = defaultWalletServer3
+        }
+	if cfg.WalletServer4 == "" {
+                cfg.WalletServer4 = defaultWalletServer4
+        }
 
 	// Output folder
 	cfg.OutFolder = cleanAndExpandPath(cfg.OutFolder)
