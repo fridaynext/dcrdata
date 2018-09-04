@@ -64,12 +64,16 @@ var (
 
 	// default Account
 	defaultWalletServer1 = "127.0.0.1:19101"
+	defaultWalletCert1 = "/home/casey/.dcrwallet-cold-default/rpc.cert"
 	// june-coins Account
 	defaultWalletServer2 = "127.0.0.1:19102"
+	defaultWalletCert2 = "/home/casey/.dcrwallet-cold-june-coins/rpc.cert"
 	// staking-rewards
 	defaultWalletServer3 = "127.0.0.1:19103"
+	defaultWalletCert3 = "/home/casey/.dcrwallet-cold-staking-rewards/rpc.cert"
 	// Hot Wallet (Voter)
 	defaultWalletServer4 = "127.0.0.1:9110"
+	defaultWalletCert4 = "/home/casey/.dcrwallet/rpc.cert"
 )
 
 type config struct {
@@ -127,9 +131,13 @@ type config struct {
 	DisableDaemonTLS bool   `long:"nodaemontls" description:"Disable TLS for the daemon RPC client -- NOTE: This is only allowed if the RPC client is connecting to localhost"`
 	
 	WalletServer1	string `long:"walletserver1" description:"Hostname/IP and port where dcrwallet (default account) is listening on"`
+	WalletCert1	string `long:"walletcert1" description:"File containing the dcrwallet certificate for default account wallet"`
 	WalletServer2   string `long:"walletserver2" description:"Hostname/IP and port where dcrwallet (june-coins account) is listening on"`
+	WalletCert2     string `long:"walletcert2" description:"File containing the dcrwallet certificate for june-coins wallet"`
 	WalletServer3   string `long:"walletserver3" description:"Hostname/IP and port where dcrwallet (staking-rewards account) is listening on"`
+	WalletCert3     string `long:"walletcert3" description:"File containing the dcrwallet certificate for staking rewards wallet"`
 	WalletServer4   string `long:"walletserver4" description:"Hostname/IP and port where dcrwallet (hot voter account) is listening on"`
+	WalletCert4     string `long:"walletcert4" description:"File containing the dcrwallet certificate for hot wallet default account"`
 }
 
 var (
@@ -158,6 +166,10 @@ var (
 		WalletServer2:	    defaultWalletServer2,
 		WalletServer3:	    defaultWalletServer3,
 		WalletServer4:	    defaultWalletServer4,
+		WalletCert1:	    defaultWalletCert1,
+		WalletCert2:	    defaultWalletCert2,
+		WalletCert3:	    defaultWalletCert3,
+		WalletCert4:	    defaultWalletCert4,
 	}
 )
 
@@ -461,6 +473,18 @@ func loadConfig() (*config, error) {
         }
 	if cfg.WalletServer4 == "" {
                 cfg.WalletServer4 = defaultWalletServer4
+        }
+	if cfg.WalletCert1 == "" {
+		cfg.WalletCert1 = defaultWalletCert1
+	}
+	if cfg.WalletCert2 == "" {
+                cfg.WalletCert2 = defaultWalletCert2
+        }
+	if cfg.WalletCert3 == "" {
+                cfg.WalletCert3 = defaultWalletCert3
+        }
+	if cfg.WalletCert4 == "" {
+                cfg.WalletCert4 = defaultWalletCert4
         }
 
 	// Output folder

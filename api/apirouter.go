@@ -38,10 +38,21 @@ func NewAPIRouter(app *appContext, userRealIP bool) apiMux {
 
 	// Added for fridaynext tracking of all wallets
 	mux.Route("/wallet", func(r chi.Router) {
-		r.Get("/accounts", app.Wallet.GetAccounts)
-		r.Get("/transactions", app.Wallet.GetTransactions)
-		r.Get("/unspent", app.Wallet.GetUnspent)
-		r.Get("/balance", app.Wallet.GetBalance)
+		r.Get("/tx-cool1", app.Wallet1.GetTransactions)
+		r.Get("/tx-cool2", app.Wallet2.GetTransactions)
+		r.Get("/tx-cool3", app.Wallet3.GetTransactions)
+		r.Get("/tx-hot", app.Wallet4.GetTransactions)
+		r.Get("/unspent-cool1", app.Wallet1.GetUnspent)
+		r.Get("/unspent-cool2", app.Wallet2.GetUnspent)
+		r.Get("/unspent-cool3", app.Wallet3.GetUnspent)
+		r.Get("/balance-cool1", app.Wallet1.GetBalance)
+		r.Get("/balance-cool2", app.Wallet2.GetBalance)
+		r.Get("/balance-cool3", app.Wallet3.GetBalance)
+		r.Get("/balance-hot", app.Wallet4.GetBalance)
+		r.Get("/tickets-cool1", app.Wallet1.GetTickets)
+		r.Get("/tickets-cool2", app.Wallet2.GetTickets)
+		r.Get("/tickets-cool3", app.Wallet3.GetTickets)
+		r.Get("/tickets-hot", app.Wallet4.GetTickets)
 	})
 
 	mux.Route("/block", func(r chi.Router) {

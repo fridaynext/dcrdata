@@ -24,7 +24,7 @@ import (
 	"github.com/fridaynext/dcrdata/wallet"
 	"github.com/decred/dcrd/chaincfg/chainhash"
 	"github.com/decred/dcrd/rpcclient"
-	"github.com/decred/dcrdata/api"
+	"github.com/fridaynext/dcrdata/api"
 	"github.com/decred/dcrdata/api/insight"
 	"github.com/decred/dcrdata/blockdata"
 	"github.com/decred/dcrdata/db/agendadb"
@@ -115,10 +115,10 @@ func mainCore() error {
 
 	// Initialize the dcrwallet funcs for accessing the dcrwallet daemons. This creates its own RPC
 	//  connections since the dcrwallet daemons listen on a different port from the dcrd RPC server
-	dcrwalletClient1 := wallet.NewWalletClient(cfg.WalletServer1, cfg.DcrdUser, cfg.DcrdPass, cfg.DcrdCert, cfg.DisableDaemonTLS)
-	dcrwalletClient2 := wallet.NewWalletClient(cfg.WalletServer2, cfg.DcrdUser, cfg.DcrdPass, cfg.DcrdCert, cfg.DisableDaemonTLS)
-	dcrwalletClient3 := wallet.NewWalletClient(cfg.WalletServer3, cfg.DcrdUser, cfg.DcrdPass, cfg.DcrdCert, cfg.DisableDaemonTLS)
-	dcrwalletClient4 := wallet.NewWalletClient(cfg.WalletServer4, cfg.DcrdUser, cfg.DcrdPass, cfg.DcrdCert, cfg.DisableDaemonTLS)
+	dcrwalletClient1 := wallet.NewWalletClient(cfg.WalletServer1, cfg.DcrdUser, cfg.DcrdPass, cfg.WalletCert1, cfg.DisableDaemonTLS)
+	dcrwalletClient2 := wallet.NewWalletClient(cfg.WalletServer2, cfg.DcrdUser, cfg.DcrdPass, cfg.WalletCert2, cfg.DisableDaemonTLS)
+	dcrwalletClient3 := wallet.NewWalletClient(cfg.WalletServer3, cfg.DcrdUser, cfg.DcrdPass, cfg.WalletCert3, cfg.DisableDaemonTLS)
+	dcrwalletClient4 := wallet.NewWalletClient(cfg.WalletServer4, cfg.DcrdUser, cfg.DcrdPass, cfg.WalletCert4, cfg.DisableDaemonTLS)
 
 	// Display connected network
 	curnet, err := dcrdClient.GetCurrentNet()

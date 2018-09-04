@@ -70,13 +70,20 @@ func (scope *Wallet) GetBalance(w http.ResponseWriter, r *http.Request) {
 }
 
 func (scope *Wallet) GetTransactions(w http.ResponseWriter, r *http.Request) {
-    transactions, err := scope.client.ListTransactions("*")
+    transactions, err := scope.client.ListTransactionsCount("*", 999999)
     if err != nil {
         log.Fatal(err)
     }
     scope.json(w, transactions)
 }
 
+func (scope *Wallet) GetTickets(w http.ResponseWriter, r *http.Request) {
+    tickets, err := scope.client.GetTickets(true)
+    if err != nil {
+        log.Fatal(err)
+    }
+    scope.json(w, tickets)
+}
 
 func (scope *Wallet) json(w http.ResponseWriter, data interface{}) {
     w.Header().Set("Content-Type", "application/json; charset=utf-8")

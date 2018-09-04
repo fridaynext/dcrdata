@@ -17,7 +17,7 @@ import (
 	"github.com/decred/dcrd/chaincfg"
 	"github.com/decred/dcrd/dcrjson"
 	"github.com/decred/dcrd/rpcclient"
-	"github.com/fridaynext/dcrwallet/wallet"
+	"github.com/fridaynext/dcrdata/wallet"
 	apitypes "github.com/decred/dcrdata/api/types"
 	"github.com/decred/dcrdata/db/dbtypes"
 	"github.com/decred/dcrdata/explorer"
@@ -99,7 +99,10 @@ type appContext struct {
 	nodeClient    *rpcclient.Client
 	Params        *chaincfg.Params
 	BlockData     DataSourceLite
-	Wallet	      *wallet.Wallet
+	Wallet1	      *wallet.Wallet
+	Wallet2	      *wallet.Wallet
+	Wallet3	      *wallet.Wallet
+	Wallet4	      *wallet.Wallet
 	AuxDataSource DataSourceAux
 	LiteMode      bool
 	Status        apitypes.Status
@@ -121,7 +124,10 @@ func NewContext(client *rpcclient.Client, dcrwalletClient1 *wallet.Wallet, dcrwa
 		nodeClient:    client,
 		Params:        params,
 		BlockData:     dataSource,
-		Wallet:	       dcrwalletClient,
+		Wallet1:       dcrwalletClient1,
+		Wallet2:       dcrwalletClient2,
+		Wallet3:       dcrwalletClient3,
+	    	Wallet4:       dcrwalletClient4,
 		AuxDataSource: auxDataSource,
 		LiteMode:      liteMode,
 		Status: apitypes.Status{
