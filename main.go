@@ -21,10 +21,8 @@ import (
 	"sync"
 	"time"
 
-	"github.com/fridaynext/dcrdata/wallet"
 	"github.com/decred/dcrd/chaincfg/chainhash"
 	"github.com/decred/dcrd/rpcclient"
-	"github.com/fridaynext/dcrdata/api"
 	"github.com/decred/dcrdata/api/insight"
 	"github.com/decred/dcrdata/blockdata"
 	"github.com/decred/dcrdata/db/agendadb"
@@ -39,6 +37,8 @@ import (
 	"github.com/decred/dcrdata/semver"
 	"github.com/decred/dcrdata/txhelpers"
 	"github.com/decred/dcrdata/version"
+	"github.com/fridaynext/dcrdata/api"
+	"github.com/fridaynext/dcrdata/wallet"
 	"github.com/go-chi/chi"
 	"github.com/google/gops/agent"
 )

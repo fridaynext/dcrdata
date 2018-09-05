@@ -1,4 +1,4 @@
-module github.com/decred/dcrdata
+module github.com/fridaynext/dcrdata
 
 require (
 	github.com/AndreasBriese/bbloom v0.0.0-20170702084017-28f7e881ca57 // indirect
@@ -24,6 +24,7 @@ require (
 	github.com/decred/dcrd/rpcclient v1.0.1
 	github.com/decred/dcrd/txscript v1.0.1
 	github.com/decred/dcrd/wire v1.1.0
+	github.com/decred/dcrdata v2.1.2+incompatible
 	github.com/decred/dcrwallet/wallet v1.0.0
 	github.com/decred/slog v1.0.0
 	github.com/dgraph-io/badger v1.5.3
