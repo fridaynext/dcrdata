@@ -5,6 +5,7 @@
 package blockdata
 
 import (
+	"reflect"
 	"sync"
 
 	"github.com/decred/dcrd/chaincfg/chainhash"
@@ -180,12 +181,19 @@ out:
 			// Store block data with each saver
 			savers := p.dataSavers
 			if reorg {
-				savers = p.reorgDataSavers
+				// This check should be redundant with check above.
+				if reorgData.NewChainHead.IsEqual(hash) {
+					savers = p.reorgDataSavers
+				} else {
+					savers = nil
+				}
 			}
 			for _, s := range savers {
 				if s != nil {
 					// save data to wherever the saver wants to put it
-					s.Store(blockData, msgBlock)
+					if err = s.Store(blockData, msgBlock); err != nil {
+						log.Errorf("(%v).Store failed: %v", reflect.TypeOf(s), err)
+					}
 				}
 			}
 
@@ -201,7 +209,9 @@ out:
 
 }
 
-// ReorgHandler receives notification of a chain reorganization
+// ReorgHandler receives notification of a chain reorganization. A
+// reorganization is handled in blockdata by setting the reorganizing flag so
+// that block data is not collected as the new chain is connected.
 func (p *chainMonitor) ReorgHandler() {
 	defer p.wg.Done()
 out:

@@ -22,16 +22,19 @@ const (
 		prev_tx_hash TEXT,
 		prev_tx_index INT8,
 		prev_tx_tree INT2,
-		value_in INT8
+		value_in INT8,
+		tx_type INT4
 	);`
 
 	InsertVinRow0 = `INSERT INTO vins (tx_hash, tx_index, tx_tree, prev_tx_hash, prev_tx_index, prev_tx_tree,
-		value_in, is_valid, is_mainchain, block_time) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10) `
+		value_in, is_valid, is_mainchain, block_time, tx_type) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11) `
 	InsertVinRow = InsertVinRow0 + `RETURNING id;`
 	// InsertVinRowChecked = InsertVinRow0 +
 	// 	`ON CONFLICT (tx_hash, tx_index, tx_tree) DO NOTHING RETURNING id;`
-	UpsertVinRow = InsertVinRow0 + `ON CONFLICT (tx_hash, tx_index, tx_tree) DO UPDATE 
-		SET tx_hash = $1, tx_index = $2, tx_tree = $3 RETURNING id;`
+	UpsertVinRow = InsertVinRow0 + `ON CONFLICT (tx_hash, tx_index, tx_tree) DO UPDATE
+		SET is_valid = $8, is_mainchain = $9, block_time = $10,
+			prev_tx_hash = $4, prev_tx_index = $5, prev_tx_tree = $6
+		RETURNING id;`
 
 	DeleteVinsDuplicateRows = `DELETE FROM vins
 		WHERE id IN (SELECT id FROM (
@@ -41,29 +44,37 @@ const (
 			WHERE t.rnum > 1);`
 
 	IndexVinTableOnVins = `CREATE UNIQUE INDEX uix_vin
-		ON vins(tx_hash, tx_index, tx_tree)
-		;` // STORING (prev_tx_hash, prev_tx_index)
+		ON vins(tx_hash, tx_index, tx_tree);`
+	DeindexVinTableOnVins = `DROP INDEX uix_vin;`
+
 	IndexVinTableOnPrevOuts = `CREATE INDEX uix_vin_prevout
-		ON vins(prev_tx_hash, prev_tx_index)
-		;` // STORING (tx_hash, tx_index)
-	DeindexVinTableOnVins     = `DROP INDEX uix_vin;`
+		ON vins(prev_tx_hash, prev_tx_index);`
 	DeindexVinTableOnPrevOuts = `DROP INDEX uix_vin_prevout;`
 
 	SelectVinIDsALL = `SELECT id FROM vins;`
 	CountVinsRows   = `SELECT reltuples::BIGINT AS estimate FROM pg_class WHERE relname='vins';`
 
-	SelectSpendingTxsByPrevTx = `SELECT id, tx_hash, tx_index, prev_tx_index FROM vins WHERE prev_tx_hash=$1;`
-	SelectSpendingTxByPrevOut = `SELECT id, tx_hash, tx_index FROM vins 
+	SetTxTypeOnVinsByVinIDs = `UPDATE vins SET tx_type=$1 WHERE id=$2;`
+
+	SelectSpendingTxsByPrevTx                = `SELECT id, tx_hash, tx_index, prev_tx_index FROM vins WHERE prev_tx_hash=$1;`
+	SelectSpendingTxsByPrevTxWithBlockHeight = `SELECT prev_tx_index, vins.tx_hash, vins.tx_index, block_height
+		FROM vins LEFT JOIN transactions ON
+			transactions.tx_hash=vins.tx_hash AND
+			transactions.is_valid=TRUE AND
+			transactions.is_mainchain=TRUE
+		WHERE prev_tx_hash=$1 AND vins.is_valid=TRUE AND vins.is_mainchain=TRUE;`
+	SelectSpendingTxByPrevOut = `SELECT id, tx_hash, tx_index FROM vins
 		WHERE prev_tx_hash=$1 AND prev_tx_index=$2;`
 	SelectFundingTxsByTx        = `SELECT id, prev_tx_hash FROM vins WHERE tx_hash=$1;`
 	SelectFundingTxByTxIn       = `SELECT id, prev_tx_hash FROM vins WHERE tx_hash=$1 AND tx_index=$2;`
-	SelectFundingOutpointByTxIn = `SELECT id, prev_tx_hash, prev_tx_index, prev_tx_tree FROM vins 
+	SelectFundingOutpointByTxIn = `SELECT id, prev_tx_hash, prev_tx_index, prev_tx_tree FROM vins
 		WHERE tx_hash=$1 AND tx_index=$2;`
+
 	SelectFundingOutpointByVinID = `SELECT prev_tx_hash, prev_tx_index, prev_tx_tree FROM vins WHERE id=$1;`
 	SelectFundingTxByVinID       = `SELECT prev_tx_hash FROM vins WHERE id=$1;`
 	SelectSpendingTxByVinID      = `SELECT tx_hash, tx_index, tx_tree FROM vins WHERE id=$1;`
 	SelectAllVinInfoByID         = `SELECT tx_hash, tx_index, tx_tree, is_valid, is_mainchain, block_time,
-		prev_tx_hash, prev_tx_index, prev_tx_tree, value_in FROM vins WHERE id = $1;`
+		prev_tx_hash, prev_tx_index, prev_tx_tree, value_in, tx_type FROM vins WHERE id = $1;`
 
 	SetIsValidIsMainchainByTxHash = `UPDATE vins SET is_valid = $1, is_mainchain = $2
 		WHERE tx_hash = $3 AND block_time = $4 AND tx_tree = $5;`
@@ -80,14 +91,15 @@ const (
 
 	// SetVinsTableCoinSupplyUpgrade does not set is_mainchain because that upgrade comes after this one
 	SetVinsTableCoinSupplyUpgrade = `UPDATE vins SET is_valid = $1, block_time = $3, value_in = $4
-		WHERE tx_hash = $5 and tx_index = $6 and tx_tree = $7;`
+		WHERE tx_hash = $5 AND tx_index = $6 AND tx_tree = $7;`
 
-	// SelectCoinSupply fetches the coin supply as of the latest block and sum
-	// represents the generated coins for all stakebase and only
-	// not-invalidated coinbase transactions.
+	// SelectCoinSupply fetches the coin supply as of the latest block, where
+	// sum represents the generated coins for all stakebase and only
+	// stake-validated coinbase transactions.
 	SelectCoinSupply = `SELECT block_time, sum(value_in) FROM vins WHERE
 		prev_tx_hash = '0000000000000000000000000000000000000000000000000000000000000000' AND
-		not (is_valid = false AND tx_tree = 0) GROUP BY block_time ORDER BY block_time;` // TODO is_mainchain
+		NOT (is_valid = false AND tx_tree = 0)
+		AND is_mainchain = true GROUP BY block_time ORDER BY block_time;`
 
 	CreateVinType = `CREATE TYPE vin_t AS (
 		prev_tx_hash TEXT,
@@ -113,13 +125,13 @@ const (
 		script_addresses TEXT[]
 	);`
 
-	insertVoutRow0 = `INSERT INTO vouts (tx_hash, tx_index, tx_tree, value, 
+	insertVoutRow0 = `INSERT INTO vouts (tx_hash, tx_index, tx_tree, value,
 		version, pkscript, script_req_sigs, script_type, script_addresses)
 	VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9) `
 	insertVoutRow = insertVoutRow0 + `RETURNING id;`
 	//insertVoutRowChecked  = insertVoutRow0 + `ON CONFLICT (tx_hash, tx_index, tx_tree) DO NOTHING RETURNING id;`
-	upsertVoutRow = insertVoutRow0 + `ON CONFLICT (tx_hash, tx_index, tx_tree) DO UPDATE 
-		SET tx_hash = $1, tx_index = $2, tx_tree = $3 RETURNING id;`
+	upsertVoutRow = insertVoutRow0 + `ON CONFLICT (tx_hash, tx_index, tx_tree) DO UPDATE
+		SET version = $5 RETURNING id;`
 	insertVoutRowReturnId = `WITH inserting AS (` +
 		insertVoutRow0 +
 		`ON CONFLICT (tx_hash, tx_index, tx_tree) DO UPDATE

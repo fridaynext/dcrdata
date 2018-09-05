@@ -2,17 +2,23 @@
 <!DOCTYPE html>
 <html lang="en">
 {{template "html-head" printf "Decred Block %d" .Data.Height}}
-<body>
+<body class="{{ theme }}">
     {{ template "navbar" . }}
-    <div class="container" data-controller="main">
+    <div class="container main" data-controller="main">
     {{with .Data}}
+        {{$Invalidated := and (gt .Confirmations 1) (not .Valid) }}
         <div class="row justify-content-between">
             <div class="col-md-7 col-sm-6">
                 <h4 class="mb-2">
-                    Block #{{.Height}} {{ if gt .Confirmations 1 }}
-                        <span class="op60 fs12">( <span data-confirmation-block-height="{{$.ConfirmHeight}}">{{.Confirmations}}</span> confirmations)</span>
+                    Block #{{.Height}}
+                    {{ if not .MainChain }}
+                        <span class="attention">(side chain)</span>
                     {{else}}
-                        <span class="op60 fs12">best block</span>
+                        {{ if gt .Confirmations 1 }}
+                            <span class="op60 fs12">( <span data-confirmation-block-height="{{$.ConfirmHeight}}">{{.Confirmations}}</span> confirmations)</span>
+                        {{else}}
+                            <span class="op60 fs12">best block</span>
+                        {{end}}
                     {{end}}
                     <a class="fs12" href="/api/block/{{.Height}}/verbose?indent=true" data-turbolinks="false">api</a>
                 </h4>
@@ -21,7 +27,7 @@
                 <table>
                     <tr class="h2rem">
                         <td class="pr-2 lh1rem vam text-right xs-w117 w120">TOTAL SENT</td>
-                        <td class="fs28 mono fs16-decimal d-flex align-items-center">{{template "decimalParts" (float64AsDecimalParts .TotalSent false)}}<span class="pl-1 unit">DCR</span></td>
+                        <td class="fs28 mono fs16-decimal d-flex align-items-center">{{template "decimalParts" (float64AsDecimalParts .TotalSent 8 false)}}<span class="pl-1 unit">DCR</span></td>
                     </tr>
                 </table>
             </div>
@@ -30,6 +36,20 @@
         <div class="row justify-content-between">
             <div class="col-md-7 col-sm-6 d-flex">
                 <table class="">
+                    {{if .MainChain}}<tr>
+                        <td class="text-right pr-2 lh1rem vam nowrap" title="Stakeholder (PoS) approved?">APPROVED</td>
+                        <td class="lh1rem">
+                        {{ if gt .Confirmations 1 }}
+                            {{if $Invalidated}}
+                                <span class="attention" title="Regular (non-stake) transactions invalidated.">{{.Valid}}</span>
+                            {{else}}
+                                <span title="All transactions valid.">{{.Valid}}</span>
+                            {{end}}
+                        {{else}}
+                            pending
+                        {{end}}
+                        </td>
+                    </tr>{{end}}
                     <tr>
                         <td class="text-right pr-2 lh1rem vam nowrap xs-w117">BLOCK HASH</td>
                         <td>
@@ -51,10 +71,17 @@
                     </tr>
                     {{else}}
                     <tr>
+                        {{if .MainChain}}
                         <td class="text-right pr-2 lh1rem vam nowrap"><a href="/mempool">NEXT BLOCK</a></td>
                         <td>
                             <span class="lh1rem">mempool</span>
                         </td>
+                        {{else}}
+                        <td class="text-right pr-2 lh1rem nowrap p03rem0">NEXT BLOCK</td>
+                        <td>
+                            <span class="lh1rem">N/A</span>
+                        </td>
+                        {{end}}
                     </tr>
                     {{end}}
                     <tr>
@@ -129,7 +156,7 @@
                     <tr>
                         <td class="text-right pr-2 lh1rem p03rem0 xs-w117">TICKET PRICE</td>
                         <td class="lh1rem">
-                            {{template "decimalParts" (float64AsDecimalParts .SBits false)}}
+                            {{template "decimalParts" (float64AsDecimalParts .SBits 8 false)}}
                         </td>
                     </tr>
                     <tr>
@@ -139,7 +166,7 @@
                     <tr>
                         <td class="text-right pr-2 lh1rem nowrap p03rem0 xs-w91">POW DIFFICULTY</td>
                         <td class="lh1rem">
-                            {{template "decimalParts" (float64AsDecimalParts .Difficulty true)}}
+                            {{template "decimalParts" (float64AsDecimalParts .Difficulty 8 true)}}
                         </td>
                     </tr>
                 </table>
@@ -158,14 +185,20 @@
                                 <th class="text-right">Total DCR</th>
                                 <th>Size</th>
                             </thead>
-                            <tbody>
+                            <tbody {{if $Invalidated}}class="invalidated-tx" title="Regular transactions invalidated."{{end}}>
                                 <tr>
                                     <td class="break-word">
+                                    {{if $.Data.Nonce}}
                                         <span>
                                             <a class="hash" href="/tx/{{.TxID}}">{{.TxID}}</a>
                                         </span>
+                                    {{else}}
+                                        <span title="The Genesis block coinbase transaction is invalid on mainnet.">
+                                            <span class="attention">&#9888;</span> <a class="hash" href="https://github.com/decred/dcrd/blob/2a18beb4d56fe59d614a7309308d84891a0cba96/chaincfg/genesis.go#L17-L53">{{.TxID}}</a>
+                                        </span>
+                                    {{end}}
                                     </td>
-                                    <td class="mono fs15 text-right">{{template "decimalParts" (float64AsDecimalParts .Total false)}}</td>
+                                    <td class="mono fs15 text-right">{{template "decimalParts" (float64AsDecimalParts .Total 8 false)}}</td>
                                     <td class="mono fs15">{{.FormattedSize}}</td>
                                 </tr>
                             </tbody>
@@ -193,12 +226,10 @@
                     <table class="table table-sm striped">
                         <thead>
                             <th>Transactions ID</th>
-                            <th>Version</th>
-                            <th>Last Block Valid</th>
-                            <th>Issue ID</th>
-                            <th>Choice ID</th>
+                            <th>Vote Version</th>
+                            <th>Last Block</th>
                             <th class="text-right">Total DCR</th>
-                            <th>Size</th>
+                            <th class="text-right">Size</th>
                         </thead>
                         <tbody>
                             {{range .Votes}}
@@ -209,19 +240,9 @@
                                     </span>
                                 </td>
                                 <td class="mono fs15">{{.VoteInfo.Version}}</td>
-                                <td>{{.VoteInfo.Validation.Validity}}</td>
-                                <td class="mono fs15">{{if (len .VoteInfo.Choices) gt 0}}
-                                    {{(index .VoteInfo.Choices 0).ID}}
-                                {{else}}
-                                    -
-                                {{end}}</td>
-                                <td class="mono fs15">{{if (len .VoteInfo.Choices) gt 0}}
-                                    {{(index .VoteInfo.Choices 0).Choice.Id}}
-                                {{else}}
-                                    -
-                                {{end}}</td>
-                                <td class="mono fs15 text-right">{{template "decimalParts" (float64AsDecimalParts .Total false)}}</td>
-                                <td class="mono fs15">{{.FormattedSize}}</td>
+                                <td>{{if .VoteInfo.Validation.Validity}}Valid{{else}}Invalid{{end}}</td>
+                                <td class="mono fs15 text-right">{{template "decimalParts" (float64AsDecimalParts .Total 8 false)}}</td>
+                                <td class="mono fs15 text-right">{{.FormattedSize}}</td>
                             </tr>
                             {{end}}
                         </tbody>
@@ -283,7 +304,7 @@
                                         <a class="hash" href="/tx/{{.TxID}}">{{.TxID}}</a>
                                     </span>
                                 </td>
-                                <td class="text-right dcr mono fs15">{{template "decimalParts" (float64AsDecimalParts .Total false)}}</td>
+                                <td class="text-right dcr mono fs15">{{template "decimalParts" (float64AsDecimalParts .Total 8 false)}}</td>
                                 <td class="mono fs15 text-right">{{.Fee}}</td>
                                 <td class="mono fs15">{{.FormattedSize}}</td>
                             </tr>
@@ -314,7 +335,7 @@
                                     <a class="hash" href="/tx/{{.TxID}}">{{.TxID}}</a>
                                 </span>
                             </td>
-                            <td class="mono fs15 text-right">{{template "decimalParts" (float64AsDecimalParts .Total false)}}</td>
+                            <td class="mono fs15 text-right">{{template "decimalParts" (float64AsDecimalParts .Total 8 false)}}</td>
                             <td class="mono fs15 text-right">{{.Fee}}</td>
                             <td class="mono fs15">{{.FormattedSize}}</td>
                         </tr>
@@ -343,7 +364,7 @@
                             <th class="text-right">Fee</th>
                             <th>Size</th>
                         </thead>
-                        <tbody>
+                        <tbody {{if $Invalidated}}class="invalidated-tx" title="Regular transactions invalidated."{{end}}>
                             {{range .Tx}}
                             {{if eq .Coinbase false}}
                             <tr>
@@ -352,7 +373,7 @@
                                         <a class="hash" href="/tx/{{.TxID}}">{{.TxID}}</a>
                                     </span>
                                 </td>
-                                <td class="mono fs15 text-right">{{template "decimalParts" (float64AsDecimalParts .Total false)}}</td>
+                                <td class="mono fs15 text-right">{{template "decimalParts" (float64AsDecimalParts .Total 8 false)}}</td>
                                 <td class="mono fs15 text-right">{{.Fee}}</td>
                                 <td class="mono fs15">{{.FormattedSize}}</td>
                             </tr>

@@ -92,6 +92,10 @@ type DataSourceAux interface {
 		txnType dbtypes.AddrTxnType) (*apitypes.Address, error)
 	AddressTotals(address string) (*apitypes.AddressTotals, error)
 	VotesInBlock(hash string) (int16, error)
+	GetTxHistoryData(address string, addrChart dbtypes.HistoryChart,
+		chartGroupings dbtypes.ChartGrouping) (*dbtypes.ChartsData, error)
+	GetTicketPoolByDateAndInterval(int64, dbtypes.ChartGrouping) (*dbtypes.PoolTicketsData, error)
+	GetTicketPoolBlockMaturity() int64
 }
 
 // dcrdata application context used by all route handlers
@@ -134,7 +138,7 @@ func NewContext(client *rpcclient.Client, dcrwalletClient1 *wallet.Wallet, dcrwa
 			Height:          uint32(nodeHeight),
 			NodeConnections: conns,
 			APIVersion:      APIVersion,
-			DcrdataVersion:  appver.Ver.String(),
+			DcrdataVersion:  appver.Version(),
 		},
 		JSONIndent: JSONIndent,
 	}
@@ -496,7 +500,7 @@ func (c *appContext) getDecodedTransactions(w http.ResponseWriter, r *http.Reque
 	for i := range txids {
 		tx := c.BlockData.GetTrimmedTransaction(txids[i])
 		if tx == nil {
-			apiLog.Errorf("Unable to get transaction %s", tx)
+			apiLog.Errorf("Unable to get transaction %v", tx)
 			http.Error(w, http.StatusText(422), 422)
 			return
 		}
@@ -729,6 +733,31 @@ func (c *appContext) getSSTxDetails(w http.ResponseWriter, r *http.Request) {
 	writeJSON(w, sstxDetails, c.getIndentQuery(r))
 }
 
+func (c *appContext) getTicketPoolByDate(w http.ResponseWriter, r *http.Request) {
+	if c.LiteMode {
+		// not available in lite mode
+		http.Error(w, "not available in lite mode", 422)
+		return
+	}
+
+	tp := m.GetTpCtx(r)
+	// default to day if no grouping was sent
+	if tp == "" {
+		tp = "day"
+	}
+
+	maturityBlock := c.AuxDataSource.GetTicketPoolBlockMaturity()
+	tpData, err := c.AuxDataSource.GetTicketPoolByDateAndInterval(maturityBlock,
+		dbtypes.ChartGroupingFromStr(tp))
+	if err != nil {
+		apiLog.Errorf("Unable to get ticket pool by date: %v", err)
+		http.Error(w, http.StatusText(422), 422)
+		return
+	}
+
+	writeJSON(w, tpData, c.getIndentQuery(r))
+}
+
 func (c *appContext) getBlockSize(w http.ResponseWriter, r *http.Request) {
 	idx := c.getBlockHeightCtx(r)
 	if idx < 0 {
@@ -748,7 +777,7 @@ func (c *appContext) getBlockSize(w http.ResponseWriter, r *http.Request) {
 func (c *appContext) blockSubsidies(w http.ResponseWriter, r *http.Request) {
 	if c.LiteMode {
 		// not available in lite mode
-		http.Error(w, "note available in lite mode", 422)
+		http.Error(w, "not available in lite mode", 422)
 		return
 	}
 
@@ -1079,14 +1108,14 @@ func (c *appContext) getStakeDiffRange(w http.ResponseWriter, r *http.Request) {
 }
 
 func (c *appContext) addressTotals(w http.ResponseWriter, r *http.Request) {
-	address := m.GetAddressCtx(r)
-	if address == "" {
-		http.Error(w, http.StatusText(422), 422)
+	if c.LiteMode {
+		// not available in lite mode
+		http.Error(w, "not available in lite mode", 422)
 		return
 	}
 
-	if c.LiteMode {
-		// not available in lite mode
+	address := m.GetAddressCtx(r)
+	if address == "" {
 		http.Error(w, http.StatusText(422), 422)
 		return
 	}
@@ -1101,7 +1130,84 @@ func (c *appContext) addressTotals(w http.ResponseWriter, r *http.Request) {
 	writeJSON(w, totals, c.getIndentQuery(r))
 }
 
+func (c *appContext) getAddressTxTypesData(w http.ResponseWriter, r *http.Request) {
+	if c.LiteMode {
+		http.Error(w, "not available in lite mode", 422)
+		return
+	}
+
+	address := m.GetAddressCtx(r)
+	chartGrouping := m.GetChartGroupingCtx(r)
+	if address == "" || chartGrouping == "" {
+		http.Error(w, http.StatusText(422), 422)
+		return
+	}
+
+	data, err := c.AuxDataSource.GetTxHistoryData(address, dbtypes.TxsType,
+		dbtypes.ChartGroupingFromStr(chartGrouping))
+	if err != nil {
+		log.Warnf("failed to get address (%s) history by tx type : %v", address, err)
+		http.Error(w, http.StatusText(422), 422)
+		return
+	}
+
+	writeJSON(w, data, c.getIndentQuery(r))
+}
+
+func (c *appContext) getAddressTxAmountFlowData(w http.ResponseWriter, r *http.Request) {
+	if c.LiteMode {
+		http.Error(w, "not available in lite mode", 422)
+		return
+	}
+
+	address := m.GetAddressCtx(r)
+	chartGrouping := m.GetChartGroupingCtx(r)
+	if address == "" || chartGrouping == "" {
+		http.Error(w, http.StatusText(422), 422)
+		return
+	}
+
+	data, err := c.AuxDataSource.GetTxHistoryData(address, dbtypes.AmountFlow,
+		dbtypes.ChartGroupingFromStr(chartGrouping))
+	if err != nil {
+		log.Warnf("failed to get address (%s) history by amount flow: %v", address, err)
+		http.Error(w, http.StatusText(422), 422)
+		return
+	}
+
+	writeJSON(w, data, c.getIndentQuery(r))
+}
+
+func (c *appContext) getAddressTxUnspentAmountData(w http.ResponseWriter, r *http.Request) {
+	if c.LiteMode {
+		http.Error(w, "not available in lite mode", 422)
+		return
+	}
+
+	address := m.GetAddressCtx(r)
+	chartGrouping := m.GetChartGroupingCtx(r)
+	if address == "" || chartGrouping == "" {
+		http.Error(w, http.StatusText(422), 422)
+		return
+	}
+
+	data, err := c.AuxDataSource.GetTxHistoryData(address, dbtypes.TotalUnspent,
+		dbtypes.ChartGroupingFromStr(chartGrouping))
+	if err != nil {
+		log.Warnf("failed to get address (%s) history by unspent amount flow: %v", address, err)
+		http.Error(w, http.StatusText(422), 422)
+		return
+	}
+
+	writeJSON(w, data, c.getIndentQuery(r))
+}
+
 func (c *appContext) getTicketPriceChartData(w http.ResponseWriter, r *http.Request) {
+	if c.LiteMode {
+		http.Error(w, "not available in lite mode", 422)
+		return
+	}
+
 	chartData, ok := explorer.GetChartTypeData("ticket-price")
 	if !ok {
 		http.NotFound(w, r)
@@ -1112,6 +1218,11 @@ func (c *appContext) getTicketPriceChartData(w http.ResponseWriter, r *http.Requ
 }
 
 func (c *appContext) getChartTypeData(w http.ResponseWriter, r *http.Request) {
+	if c.LiteMode {
+		http.Error(w, "not available in lite mode", 422)
+		return
+	}
+
 	chartType := m.GetChartTypeCtx(r)
 	chartData, ok := explorer.GetChartTypeData(chartType)
 	if !ok {

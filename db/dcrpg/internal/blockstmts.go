@@ -26,7 +26,7 @@ const (
 	insertBlockRow = insertBlockRow0 + `RETURNING id;`
 	// insertBlockRowChecked  = insertBlockRow0 + `ON CONFLICT (hash) DO NOTHING RETURNING id;`
 	upsertBlockRow = insertBlockRow0 + `ON CONFLICT (hash) DO UPDATE 
-		SET hash = $1 RETURNING id;`
+		SET is_valid = $4, is_mainchain = $5 RETURNING id;`
 	insertBlockRowReturnId = `WITH ins AS (` +
 		insertBlockRow0 +
 		`ON CONFLICT (hash) DO UPDATE
@@ -45,7 +45,7 @@ const (
 		FROM blocks WHERE time BETWEEN $1 and $2 ORDER BY time DESC LIMIT $3;`
 	SelectBlockByTimeRangeSQLNoLimit = `SELECT hash, height, size, time, numtx
 		FROM blocks WHERE time BETWEEN $1 and $2 ORDER BY time DESC;`
-	SelectBlockHashByHeight = `SELECT hash FROM blocks WHERE height = $1;`
+	SelectBlockHashByHeight = `SELECT hash FROM blocks WHERE height = $1 AND is_mainchain = true;`
 	SelectBlockHeightByHash = `SELECT height FROM blocks WHERE hash = $1;`
 
 	CreateBlockTable = `CREATE TABLE IF NOT EXISTS blocks (  
@@ -85,8 +85,9 @@ const (
 		ON blocks(hash);`
 	DeindexBlockTableOnHash = `DROP INDEX uix_block_hash;`
 
-	RetrieveBestBlock       = `SELECT * FROM blocks ORDER BY height DESC LIMIT 0, 1;`
-	RetrieveBestBlockHeight = `SELECT id, hash, height FROM blocks ORDER BY height DESC LIMIT 1;`
+	RetrieveBestBlock          = `SELECT * FROM blocks ORDER BY height DESC LIMIT 0, 1;`
+	RetrieveBestBlockHeightAny = `SELECT id, hash, height FROM blocks ORDER BY height DESC LIMIT 1;`
+	RetrieveBestBlockHeight    = `SELECT id, hash, height FROM blocks WHERE is_mainchain = true ORDER BY height DESC LIMIT 1;`
 
 	// SelectBlocksTicketsPrice selects the ticket price and difficulty for the first block in a stake difficulty window.
 	SelectBlocksTicketsPrice = `SELECT sbits, time, difficulty FROM blocks WHERE height % $1 = 0 ORDER BY time;`
@@ -100,6 +101,23 @@ const (
 	SelectBlockVoteCount = `SELECT voters FROM blocks WHERE hash = $1;`
 
 	UpdateBlockMainchain = `UPDATE blocks SET is_mainchain = $2 WHERE hash = $1 RETURNING previous_hash;`
+
+	SelectSideChainBlocks = `SELECT is_valid, height, previous_hash, hash, block_chain.next_hash
+		FROM blocks
+		JOIN block_chain ON this_hash=hash
+		WHERE is_mainchain = FALSE
+		ORDER BY height DESC;`
+
+	SelectSideChainTips = `SELECT is_valid, height, previous_hash, hash
+		FROM blocks
+		JOIN block_chain ON this_hash=hash
+		WHERE is_mainchain = FALSE AND block_chain.next_hash=''
+		ORDER BY height DESC;`
+
+	SelectBlockStatus = `SELECT is_valid, is_mainchain, height, previous_hash, hash, block_chain.next_hash
+		FROM blocks
+		JOIN block_chain ON this_hash=hash
+		WHERE hash = $1;`
 
 	IndexBlocksTableOnHeight = `CREATE INDEX uix_block_height ON blocks(height);`
 

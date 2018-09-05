@@ -5,8 +5,10 @@ package explorer
 
 import (
 	"context"
+	"fmt"
 	"net/http"
 	"strconv"
+	"time"
 
 	"github.com/go-chi/chi"
 )
@@ -28,13 +30,26 @@ func (exp *explorerUI) BlockHashPathOrIndexCtx(next http.Handler) http.Handler {
 		var hash string
 		if err != nil {
 			hash = chi.URLParam(r, "blockhash")
-			height, err = exp.blockData.GetBlockHeight(hash)
+			if exp.liteMode {
+				height, err = exp.blockData.GetBlockHeight(hash)
+			} else {
+				height, err = exp.explorerSource.BlockHeight(hash)
+			}
 			if err != nil {
-				log.Errorf("GetBlockHeight(%s) failed: %v", hash, err)
+				log.Errorf("BlockHeight(%s) failed: %v", hash, err)
 				exp.StatusPage(w, defaultErrorCode, "could not find that block", NotFoundStatusType)
 				return
 			}
 		} else {
+			//Handle future blocks
+			maxHeight := int64(exp.blockData.GetHeight())
+			if height > maxHeight {
+				expectedTime := time.Duration(height-maxHeight) * exp.ChainParams.TargetTimePerBlock
+				message := fmt.Sprintf("This block is expected to arrive in approximately in %v. ", expectedTime)
+				exp.StatusPage(w, defaultErrorCode, message, NotFoundStatusType)
+				return
+			}
+
 			hash, err = exp.blockData.GetBlockHash(height)
 			if err != nil {
 				log.Errorf("GetBlockHeight(%d) failed: %v", height, err)

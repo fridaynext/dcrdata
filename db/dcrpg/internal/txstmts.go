@@ -23,7 +23,7 @@ const (
 	insertTxRow = insertTxRow0 + `RETURNING id;`
 	//insertTxRowChecked = insertTxRow0 + `ON CONFLICT (tx_hash, block_hash) DO NOTHING RETURNING id;`
 	upsertTxRow = insertTxRow0 + `ON CONFLICT (tx_hash, block_hash) DO UPDATE 
-		SET block_height = $2 RETURNING id;`
+		SET is_valid = $20, is_mainchain = $21 RETURNING id;`
 	insertTxRowReturnId = `WITH ins AS (` +
 		insertTxRow0 +
 		`ON CONFLICT (tx_hash, block_hash) DO UPDATE
@@ -84,6 +84,12 @@ const (
 	SelectTxnsVinsByBlock = `SELECT vin_db_ids, is_valid, is_mainchain
 		FROM transactions WHERE block_hash = $1;`
 
+	SelectTxnsVinsVoutsByBlock = `SELECT vin_db_ids, vout_db_ids, is_mainchain
+		FROM transactions WHERE block_hash = $1;`
+
+	SelectTxsVinsAndVoutsIDs = `SELECT tx_type, vin_db_ids, vout_db_ids FROM 
+		transactions WHERE block_height BETWEEN $1 AND $2;`
+
 	UpdateRegularTxnsValidMainchainByBlock = `UPDATE transactions
 		SET is_valid=$1, is_mainchain=$2 
 		WHERE block_hash=$3 and tree=0;`
@@ -94,12 +100,29 @@ const (
 
 	UpdateTxnsMainchainByBlock = `UPDATE transactions
 		SET is_mainchain=$1 
-		WHERE block_hash=$2;`
+		WHERE block_hash=$2
+		RETURNING id;`
 
 	UpdateTxnsValidMainchainAll = `UPDATE transactions
-		SET is_valid=b.is_valid, is_mainchain=b.is_mainchain
+		SET is_valid=(b.is_valid::int + tree)::boolean, is_mainchain=b.is_mainchain
 		FROM (
 			SELECT hash, is_valid, is_mainchain
+			FROM blocks
+		) b
+		WHERE block_hash = b.hash ;`
+
+	UpdateRegularTxnsValidAll = `UPDATE transactions
+		SET is_valid=b.is_valid
+		FROM (
+			SELECT hash, is_valid
+			FROM blocks
+		) b
+		WHERE block_hash = b.hash AND tree = 0;`
+
+	UpdateTxnsMainchainAll = `UPDATE transactions
+		SET is_mainchain=b.is_mainchain
+		FROM (
+			SELECT hash, is_mainchain
 			FROM blocks
 		) b
 		WHERE block_hash = b.hash;`
@@ -107,14 +130,19 @@ const (
 	SelectRegularTxByHash = `SELECT id, block_hash, block_index FROM transactions WHERE tx_hash = $1 and tree=0;`
 	SelectStakeTxByHash   = `SELECT id, block_hash, block_index FROM transactions WHERE tx_hash = $1 and tree=1;`
 
+	SelectTicketsByType = `SELECT
+		width_bucket(num_vout, array[3, 5, 6]) as ticket_bucket,
+		count(*)
+		FROM transactions JOIN tickets
+		ON transactions.id=purchase_tx_db_id WHERE pool_status=0
+		AND tickets.is_mainchain = TRUE GROUP BY ticket_bucket;`
+
 	IndexTransactionTableOnBlockIn = `CREATE UNIQUE INDEX uix_tx_block_in
-		ON transactions(block_hash, block_index, tree)
-		;` // STORING (tx_hash, block_hash)
+		ON transactions(block_hash, block_index, tree);`
 	DeindexTransactionTableOnBlockIn = `DROP INDEX uix_tx_block_in;`
 
 	IndexTransactionTableOnHashes = `CREATE UNIQUE INDEX uix_tx_hashes
-		 ON transactions(tx_hash, block_hash)
-		 ;` // STORING (block_hash, block_index, tree)
+		 ON transactions(tx_hash, block_hash);`
 	DeindexTransactionTableOnHashes = `DROP INDEX uix_tx_hashes;`
 
 	//SelectTxByPrevOut = `SELECT * FROM transactions WHERE vins @> json_build_array(json_build_object('prevtxhash',$1)::jsonb)::jsonb;`

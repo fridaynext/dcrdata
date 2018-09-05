@@ -20,11 +20,11 @@ type AgendaDB struct {
 	NumChoices int
 }
 
-var dbName = "agendas.db"
+var dbPath string
 
 // Open will either open and existing database or create a new one using with
 // the specified file name.
-func Open(dbPath string) (*AgendaDB, error) {
+func Open() (*AgendaDB, error) {
 	_, err := os.Stat(dbPath)
 	isNewDB := err != nil && !os.IsNotExist(err)
 
@@ -51,6 +51,11 @@ func Open(dbPath string) (*AgendaDB, error) {
 		NumChoices: numChoices,
 	}
 	return agendaDB, err
+}
+
+// SetDbPath sets the dbPath as fetched from the configuration
+func SetDbPath(path string) {
+	dbPath = path
 }
 
 // Close should be called when you are done with the AgendaDB to close the
@@ -128,7 +133,7 @@ func GetVoteAgendasForVersion(ver int64, client *rpcclient.Client) (agendas []Ag
 		for i := range voteInfo.Agendas {
 			v := &voteInfo.Agendas[i]
 			a := AgendaTagged{
-				Id:             v.Id,
+				Id:             v.ID,
 				Description:    v.Description,
 				Mask:           v.Mask,
 				StartTime:      v.StartTime,
@@ -179,9 +184,9 @@ func (db *AgendaDB) Updatedb(voteVersion int64, client *rpcclient.Client) {
 }
 
 // CheckForUpdates checks for update at the start of the process and will
-// proceed to update when neccessary.
+// proceed to update when necessary.
 func CheckForUpdates(client *rpcclient.Client) error {
-	adb, err := Open(dbName)
+	adb, err := Open()
 	if err != nil {
 		log.Errorf("Failed to open new DB: %v", err)
 		return nil
@@ -201,7 +206,7 @@ func CheckForUpdates(client *rpcclient.Client) error {
 
 // GetAgendaInfo fetches an agenda's details given it's agendaId.
 func GetAgendaInfo(agendaId string) (*AgendaTagged, error) {
-	adb, err := Open(dbName)
+	adb, err := Open()
 	if err != nil {
 		log.Errorf("Failed to open new DB: %v", err)
 		return nil, err
@@ -218,7 +223,7 @@ func GetAgendaInfo(agendaId string) (*AgendaTagged, error) {
 // GetAllAgendas returns all agendas and their info in the db.
 func GetAllAgendas() (agendas []*AgendaTagged, err error) {
 	var adb *AgendaDB
-	adb, err = Open(dbName)
+	adb, err = Open()
 	if err != nil {
 		log.Errorf("Failed to open new Agendas DB: %v", err)
 		return

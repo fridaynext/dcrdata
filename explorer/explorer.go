@@ -31,7 +31,7 @@ import (
 )
 
 const (
-	maxExplorerRows              = 2000
+	maxExplorerRows              = 400
 	minExplorerRows              = 20
 	defaultAddressRows     int64 = 20
 	MaxAddressRows         int64 = 1000
@@ -61,6 +61,7 @@ type explorerDataSourceLite interface {
 // explorerDataSource implements extra data retrieval functions that require a
 // faster solution than RPC, or additional functionality.
 type explorerDataSource interface {
+	BlockHeight(hash string) (int64, error)
 	SpendingTransaction(fundingTx string, vout uint32) (string, uint32, int8, error)
 	SpendingTransactions(fundingTxID string) ([]string, []uint32, []uint32, error)
 	PoolStatusForTicket(txid string) (dbtypes.TicketSpendType, dbtypes.TicketPoolStatus, error)
@@ -71,6 +72,11 @@ type explorerDataSource interface {
 	AgendaVotes(agendaID string, chartType int) (*dbtypes.AgendaVoteChoices, error)
 	GetPgChartsData() (map[string]*dbtypes.ChartsData, error)
 	GetTicketsPriceByHeight() (*dbtypes.ChartsData, error)
+	SideChainBlocks() ([]*dbtypes.BlockStatus, error)
+	//SideChainTips() []*dbtypes.BlockStatus
+	BlockStatus(hash string) (dbtypes.BlockStatus, error)
+	GetOldestTxBlockTime(addr string) (int64, error)
+	TicketPoolVisualization(interval dbtypes.ChartGrouping) ([]*dbtypes.PoolTicketsData, *dbtypes.PoolTicketsData, error)
 }
 
 // cacheChartsData holds the prepopulated data that is used to draw the charts
@@ -179,6 +185,7 @@ func New(dataSource explorerDataSourceLite, primaryDataSource explorerDataSource
 	// explorerDataSource is an interface that could have a value of pointer
 	// type, and if either is nil this means lite mode.
 	if exp.explorerSource == nil || reflect.ValueOf(exp.explorerSource).IsNil() {
+		log.Debugf("Primary data source not available. Operating explorer in lite mode.")
 		exp.liteMode = true
 	}
 
@@ -218,7 +225,8 @@ func New(dataSource explorerDataSourceLite, primaryDataSource explorerDataSource
 		return nil
 	}
 	tmpls := []string{"home", "explorer", "mempool", "block", "tx", "address",
-		"rawtx", "status", "parameters", "agenda", "agendas", "charts"}
+		"rawtx", "status", "parameters", "agenda", "agendas", "charts", "sidechains",
+		"ticketpool"}
 
 	tempDefaults := []string{"extras"}
 
@@ -241,6 +249,13 @@ func New(dataSource explorerDataSourceLite, primaryDataSource explorerDataSource
 	go exp.wsHub.run()
 
 	return exp
+}
+
+// Height returns the height of the current block data.
+func (exp *explorerUI) Height() int64 {
+	exp.NewBlockDataMtx.RLock()
+	defer exp.NewBlockDataMtx.RUnlock()
+	return exp.NewBlockData.Height
 }
 
 // prePopulateChartsData should run in the background the first time the system
@@ -276,8 +291,7 @@ func (exp *explorerUI) prePopulateChartsData() {
 	log.Info("Done Pre-populating the charts data")
 }
 
-func (exp *explorerUI) Store(blockData *blockdata.BlockData, msgBlock *wire.MsgBlock) error {
-	exp.NewBlockDataMtx.Lock()
+func (exp *explorerUI) Store(blockData *blockdata.BlockData, _ *wire.MsgBlock) error {
 	bData := blockData.ToBlockExplorerSummary()
 
 	// Update the charts data after every five blocks or if no charts data
@@ -286,8 +300,12 @@ func (exp *explorerUI) Store(blockData *blockdata.BlockData, msgBlock *wire.MsgB
 		go exp.prePopulateChartsData()
 	}
 
+	// Lock for explorerUI's NewBlockData and ExtraInfo
+	exp.NewBlockDataMtx.Lock()
+
 	newBlockData := &BlockBasic{
 		Height:         int64(bData.Height),
+		Hash:           blockData.Header.Hash,
 		Voters:         bData.Voters,
 		FreshStake:     bData.FreshStake,
 		Size:           int32(bData.Size),
@@ -298,17 +316,18 @@ func (exp *explorerUI) Store(blockData *blockdata.BlockData, msgBlock *wire.MsgB
 		Revocations:    uint32(bData.Revocations),
 	}
 	exp.NewBlockData = newBlockData
-	percentage := func(a float64, b float64) float64 {
-		return (a / b) * 100
-	}
+	bdHeight := newBlockData.Height
 
 	stakePerc := blockData.PoolInfo.Value / dcrutil.Amount(blockData.ExtraInfo.CoinSupply).ToCoin()
 
 	// Update all ExtraInfo with latest data
 	exp.ExtraInfo.CoinSupply = blockData.ExtraInfo.CoinSupply
 	exp.ExtraInfo.StakeDiff = blockData.CurrentStakeDiff.CurrentStakeDifficulty
+	exp.ExtraInfo.NextExpectedStakeDiff = blockData.EstStakeDiff.Expected
+	exp.ExtraInfo.NextExpectedBoundsMin = blockData.EstStakeDiff.Min
+	exp.ExtraInfo.NextExpectedBoundsMax = blockData.EstStakeDiff.Max
 	exp.ExtraInfo.IdxBlockInWindow = blockData.IdxBlockInWindow
-	exp.ExtraInfo.IdxInRewardWindow = int(newBlockData.Height % exp.ChainParams.SubsidyReductionInterval)
+	exp.ExtraInfo.IdxInRewardWindow = int(bdHeight % exp.ChainParams.SubsidyReductionInterval)
 	exp.ExtraInfo.Difficulty = blockData.Header.Difficulty
 	exp.ExtraInfo.NBlockSubsidy.Dev = blockData.ExtraInfo.NextBlockSubsidy.Developer
 	exp.ExtraInfo.NBlockSubsidy.PoS = blockData.ExtraInfo.NextBlockSubsidy.PoS
@@ -319,34 +338,28 @@ func (exp *explorerUI) Store(blockData *blockdata.BlockData, msgBlock *wire.MsgB
 	exp.ExtraInfo.PoolInfo.ValAvg = blockData.PoolInfo.ValAvg
 	exp.ExtraInfo.PoolInfo.Percentage = stakePerc * 100
 
-	exp.ExtraInfo.PoolInfo.PercentTarget = func() float64 {
-		target := float64(exp.ChainParams.TicketPoolSize * exp.ChainParams.TicketsPerBlock)
-		return float64(blockData.PoolInfo.Size) / target * 100
-	}()
+	exp.ExtraInfo.PoolInfo.PercentTarget = 100 * float64(blockData.PoolInfo.Size) /
+		float64(exp.ChainParams.TicketPoolSize*exp.ChainParams.TicketsPerBlock)
 
-	exp.ExtraInfo.TicketReward = func() float64 {
-		PosSubPerVote := dcrutil.Amount(blockData.ExtraInfo.NextBlockSubsidy.PoS).ToCoin() / float64(exp.ChainParams.TicketsPerBlock)
-		return percentage(PosSubPerVote, blockData.CurrentStakeDiff.CurrentStakeDifficulty)
-	}()
+	posSubsPerVote := dcrutil.Amount(blockData.ExtraInfo.NextBlockSubsidy.PoS).ToCoin() /
+		float64(exp.ChainParams.TicketsPerBlock)
+	exp.ExtraInfo.TicketReward = 100 * posSubsPerVote /
+		blockData.CurrentStakeDiff.CurrentStakeDifficulty
 
-	// The actual Reward of a ticket needs to also take into consideration the
+	// The actual reward of a ticket needs to also take into consideration the
 	// ticket maturity (time from ticket purchase until its eligible to vote)
-	// and coinbase maturity (time after vote until funds distributed to
-	// ticket holder are avaliable to use)
-	exp.ExtraInfo.RewardPeriod = func() string {
-		PosAvgTotalBlocks := float64(
-			exp.ExtraInfo.Params.MeanVotingBlocks +
-				int64(exp.ChainParams.TicketMaturity) +
-				int64(exp.ChainParams.CoinbaseMaturity))
-		return fmt.Sprintf("%.2f days", exp.ChainParams.TargetTimePerBlock.Seconds()*PosAvgTotalBlocks/86400)
-	}()
+	// and coinbase maturity (time after vote until funds distributed to ticket
+	// holder are available to use).
+	avgSSTxToSSGenMaturity := exp.ExtraInfo.Params.MeanVotingBlocks +
+		int64(exp.ChainParams.TicketMaturity) +
+		int64(exp.ChainParams.CoinbaseMaturity)
+	exp.ExtraInfo.RewardPeriod = fmt.Sprintf("%.2f days", float64(avgSSTxToSSGenMaturity)*
+		exp.ChainParams.TargetTimePerBlock.Hours()/24)
 
-	asr, _ := exp.simulateASR(1000, false, stakePerc,
+	exp.ExtraInfo.ASR, _ = exp.simulateASR(1000, false, stakePerc,
 		dcrutil.Amount(blockData.ExtraInfo.CoinSupply).ToCoin(),
-		float64(exp.NewBlockData.Height),
+		float64(bdHeight),
 		blockData.CurrentStakeDiff.CurrentStakeDifficulty)
-
-	exp.ExtraInfo.ASR = asr
 
 	exp.NewBlockDataMtx.Unlock()
 
@@ -364,20 +377,25 @@ func (exp *explorerUI) Store(blockData *blockdata.BlockData, msgBlock *wire.MsgB
 		}
 	}()
 
-	log.Debugf("Got new block %d for the explorer.", newBlockData.Height)
+	log.Debugf("Got new block %d for the explorer.", bdHeight)
 
 	return nil
 }
 
 func (exp *explorerUI) updateDevFundBalance() {
+	if exp.liteMode {
+		log.Warnf("Full balances not supported in lite mode.")
+		return
+	}
+
 	// yield processor to other goroutines
 	runtime.Gosched()
-	exp.NewBlockDataMtx.Lock()
-	defer exp.NewBlockDataMtx.Unlock()
 
 	devBalance, err := exp.explorerSource.DevBalance()
 	if err == nil && devBalance != nil {
+		exp.NewBlockDataMtx.Lock()
 		exp.ExtraInfo.DevFund = devBalance.TotalUnspent
+		exp.NewBlockDataMtx.Unlock()
 	} else {
 		log.Errorf("explorerUI.updateDevFundBalance failed: %v", err)
 	}

@@ -28,6 +28,7 @@
     <script src="/js/turbolinks.js"></script>
     <script src="/js/jquery.js"></script>
     <script src="/js/lodash.min.js"></script>
+    <script src="/js/util.js"></script>
     <script src="/js/messagesocket.js"></script>
     <script src="/js/humanize.js"></script>
     <script src="/js/stimulus.umd.js"></script>
@@ -73,15 +74,15 @@
                         <a data-keynav-skip href="/" title="Home">Home</a>
                         <a data-keynav-skip href="/blocks" title="Decred blocks">Blocks</a>
                         <a data-keynav-skip href="/mempool" title="Decred mempool">Mempool</a>
-                        <a data-keynav-skip href="/charts" title="Decred Charts">Charts</a>
-                        <a data-keynav-skip href="/parameters" title="Chain Parameters">Parameters</a>
+                        <a data-keynav-skip href="/ticketpool" title="Decred ticket pool">Ticket Pool</a>
+                        <a data-keynav-skip href="/charts" title="Decred charts">Charts</a>
                         <a data-keynav-skip href="/agendas" title="Agendas">Agendas</a>
-                        <a data-keynav-skip href="/blocks" title="Decred blocks">Blocks</a>
+                        <a data-keynav-skip href="/parameters" title="Chain Parameters">Parameters</a>
                         <a data-keynav-skip href="/decodetx" title="Decode or send a raw transaction">Decode/Broadcast Tx</a>
                         {{if eq .NetName "Mainnet"}}
                            <a data-keynav-skip href="http://testnet.dcrdata.org/" title="Home">Switch To Testnet</a>
                         {{else}}
-                           <a data-keynav-skip href="https://mainnet.decred.org/" title="Home">Switch To Mainnet</a>
+                           <a data-keynav-skip href="https://explorer.dcrdata.org/" title="Home">Switch To Mainnet</a>
                         {{end}}
                         <a data-keynav-skip data-turbolinks="false" href="javascript:toggleSun()" class="jsonly"><span id="sun-icon" class="dcricon-sun-fill no-underline pr-2"></span> Night Mode</a>
                         <a data-keynav-skip data-turbolinks="false" href="#" class="jsonly" id="keynav-toggle">
@@ -130,9 +131,11 @@
         if (darkEnabled()) {
             setCookie(darkBGCookieName, '', 0)
             toggleToLightClasses(document.body)
+            $(document).trigger("nightMode", { nightMode: false });
         } else {
             setCookie(darkBGCookieName, 1, 525600)
             toggleToDarkClasses(document.body)
+            $(document).trigger("nightMode", { nightMode: true })
         }
     }
     document.addEventListener("turbolinks:before-render", function(event) {
@@ -452,6 +455,9 @@
     });
 
     Mousetrap.bind('enter', function(e) {
+        if (targets.length < currentIndex) {
+            return
+        }
         var currentTarget = $(targets[currentIndex])
         if (currentTarget.is( "input")) {
             currentTarget.focus()
@@ -486,6 +492,10 @@
             clearTargets()
             $topSearch.addClass("keynav-target").focus()
         }
+    });
+
+    Mousetrap.bind('`', function(e) {
+       toggleSun()
     });
 
     Mousetrap.bind('=', function(e) {
@@ -543,6 +553,8 @@ const app = Stimulus.Application.start()
 <script src="/js/controllers/mempool.js"  data-turbolinks-eval="false"></script>
 <script src="/js/controllers/agenda.js"  data-turbolinks-eval="false"></script>
 <script src="/js/controllers/charts.js" data-turbolinks-eval="false"></script>
+<script src="/js/controllers/address.js" data-turbolinks-eval="false"></script>
+<script src="/js/controllers/ticketpool.js" data-turbolinks-eval="false"></script>
 {{end}}
 
 {{define "decimalParts"}}<span class="int">{{ index . 0 }}</span><span class="dot">.</span><span class="decimal">{{ index . 1 }}<span class="trailing-zeroes">{{ index . 2 }}</span></span>{{end}}

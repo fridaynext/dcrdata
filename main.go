@@ -77,8 +77,8 @@ func mainCore() error {
 	}
 
 	// Start with version info
-	ver := &version.Ver
-	log.Infof("%s version %v (Go version %s)\n", version.AppName, ver, runtime.Version())
+	log.Infof("%s version %v (Go version %s)", version.AppName,
+		version.Version(), runtime.Version())
 
 	// PostgreSQL
 	usePG := cfg.FullMode
@@ -147,7 +147,7 @@ func mainCore() error {
 	defer baseDB.Close()
 
 	// PostgreSQL
-	var auxDB *dcrpg.ChainDB
+	var auxDB *dcrpg.ChainDBRPC
 	var newPGIndexes, updateAllAddresses, updateAllVotes bool
 	if usePG {
 		pgHost, pgPort := cfg.PGHost, ""
@@ -164,10 +164,15 @@ func mainCore() error {
 			Pass:   cfg.PGPass,
 			DBName: cfg.PGDBName,
 		}
-		auxDB, err = dcrpg.NewChainDB(&dbi, activeChain, baseDB.GetStakeDB(), !cfg.NoDevPrefetch)
-		if auxDB != nil {
-			defer auxDB.Close()
+		chainDB, err := dcrpg.NewChainDB(&dbi, activeChain, baseDB.GetStakeDB(), !cfg.NoDevPrefetch)
+		if chainDB != nil {
+			defer chainDB.Close()
 		}
+		if err != nil {
+			return err
+		}
+
+		auxDB, err = dcrpg.NewChainDBRPC(chainDB, dcrdClient)
 		if err != nil {
 			return err
 		}
@@ -283,6 +288,9 @@ func mainCore() error {
 		}
 	}
 
+	// SetAgendaDB Path
+	agendadb.SetDbPath(filepath.Join(cfg.DataDir, cfg.AgendaDBFileName))
+
 	// AgendaDB upgrade check
 	if err = agendadb.CheckForUpdates(dcrdClient); err != nil {
 		return fmt.Errorf("agendadb upgrade failed: %v", err)
@@ -297,8 +305,9 @@ func mainCore() error {
 	// Build a slice of each required saver type for each data source
 	var blockDataSavers []blockdata.BlockDataSaver
 	var mempoolSavers []mempool.MempoolDataSaver
-
-	blockDataSavers = append(blockDataSavers, auxDB)
+	if usePG {
+		blockDataSavers = append(blockDataSavers, auxDB)
+	}
 
 	// For example, dumping all mempool fees with a custom saver
 	if cfg.DumpAllMPTix {
@@ -311,7 +320,7 @@ func mainCore() error {
 	mempoolSavers = append(mempoolSavers, baseDB.MPC)
 
 	// Create the explorer system
-	explore := explorer.New(&baseDB, auxDB, cfg.UseRealIP, ver.String(), !cfg.NoDevPrefetch)
+	explore := explorer.New(&baseDB, auxDB, cfg.UseRealIP, version.Version(), !cfg.NoDevPrefetch)
 	if explore == nil {
 		return fmt.Errorf("failed to create new explorer (templates missing?)")
 	}
@@ -351,6 +360,13 @@ func mainCore() error {
 		updateAllVotes, newPGIndexes, fetchToHeight)
 	if err != nil {
 		return err
+	}
+
+	if usePG {
+		// After sync and indexing, must use upsert statement, which checks for
+		// duplicate entries and updates instead of erroring. SyncChainDB should set
+		// this on successful sync, but do it again anyway.
+		auxDB.EnableDuplicateCheckOnInsert(true)
 	}
 
 	// The sync routines may have lengthy tasks, such as table indexing, that
@@ -418,12 +434,25 @@ func mainCore() error {
 	wiredDBChainMonitor := baseDB.NewChainMonitor(collector, quit, &wg,
 		notify.NtfnChans.ConnectChanWiredDB, notify.NtfnChans.ReorgChanWiredDB)
 
+	var auxDBChainMonitor *dcrpg.ChainMonitor
+	auxDBBlockConnectedSync := func(*chainhash.Hash) {}
+	if usePG {
+		// Blockchain monitor for the aux (PG) DB
+		auxDBChainMonitor = auxDB.NewChainMonitor(quit, &wg,
+			notify.NtfnChans.ConnectChanDcrpgDB, notify.NtfnChans.ReorgChanDcrpgDB)
+		if auxDBChainMonitor == nil {
+			return fmt.Errorf("Failed to enable dcrpg ChainMonitor. *ChainDB is nil.")
+		}
+		auxDBBlockConnectedSync = auxDBChainMonitor.BlockConnectedSync
+	}
+
 	// Setup the synchronous handler functions called by the collectionQueue via
 	// OnBlockConnected.
 	collectionQueue.SetSynchronousHandlers([]func(*chainhash.Hash){
 		sdbChainMonitor.BlockConnectedSync,     // 1. Stake DB for pool info
 		wsChainMonitor.BlockConnectedSync,      // 2. blockdata for regular block data collection and storage
 		wiredDBChainMonitor.BlockConnectedSync, // 3. dcrsqlite for sqlite DB reorg handling
+		auxDBBlockConnectedSync,
 	})
 
 	// Initial data summary for web ui. stakedb must be at the same height, so
@@ -456,6 +485,13 @@ func mainCore() error {
 	wg.Add(2)
 	go wiredDBChainMonitor.BlockConnectedHandler()
 	go wiredDBChainMonitor.ReorgHandler()
+
+	if usePG {
+		// dcrsqlite does not handle new blocks except during reorg
+		wg.Add(2)
+		go auxDBChainMonitor.BlockConnectedHandler()
+		go auxDBChainMonitor.ReorgHandler()
+	}
 
 	if cfg.MonitorMempool {
 		mpoolCollector := mempool.NewMempoolDataCollector(dcrdClient, activeChain)
@@ -525,6 +561,7 @@ func mainCore() error {
 
 	webMux.Mount("/explorer", explore.Mux)
 	webMux.Get("/blocks", explore.Blocks)
+	webMux.Get("/side", explore.SideChains)
 	webMux.Get("/mempool", explore.Mempool)
 	webMux.Get("/parameters", explore.ParametersPage)
 	webMux.With(explore.BlockHashPathOrIndexCtx).Get("/block/{blockhash}", explore.Block)
@@ -535,10 +572,10 @@ func mainCore() error {
 	webMux.Get("/decodetx", explore.DecodeTxPage)
 	webMux.Get("/search", explore.Search)
 	webMux.Get("/charts", explore.Charts)
+	webMux.Get("/ticketpool", explore.Ticketpool)
 
 	if usePG {
-		chainDBRPC, _ := dcrpg.NewChainDBRPC(auxDB, dcrdClient)
-		insightApp := insight.NewInsightContext(dcrdClient, chainDBRPC, activeChain, &baseDB, cfg.IndentJSON)
+		insightApp := insight.NewInsightContext(dcrdClient, auxDB, activeChain, &baseDB, cfg.IndentJSON)
 		insightMux := insight.NewInsightApiRouter(insightApp, cfg.UseRealIP)
 		webMux.Mount("/insight/api", insightMux.Mux)
 

@@ -10,7 +10,7 @@ import (
 	flags "github.com/btcsuite/go-flags"
 	"github.com/decred/dcrd/chaincfg"
 	"github.com/decred/dcrd/dcrutil"
-	"github.com/decred/dcrwallet/netparams"
+	"github.com/decred/dcrdata/netparams"
 )
 
 const (
@@ -179,8 +179,8 @@ func loadConfig() (*config, error) {
 	activeNet = &netparams.MainNetParams
 	activeChain = &chaincfg.MainNetParams
 	if cfg.TestNet {
-		activeNet = &netparams.TestNet2Params
-		activeChain = &chaincfg.TestNet2Params
+		activeNet = &netparams.TestNet3Params
+		activeChain = &chaincfg.TestNet3Params
 		numNets++
 	}
 	if cfg.SimNet {

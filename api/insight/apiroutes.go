@@ -14,7 +14,6 @@ import (
 	"sort"
 	"strconv"
 	"strings"
-	"sync"
 	"time"
 
 	"github.com/decred/dcrd/chaincfg"
@@ -42,8 +41,6 @@ type insightApiContext struct {
 	params     *chaincfg.Params
 	MemPool    DataSourceLite
 	Status     apitypes.Status
-	statusMtx  sync.RWMutex
-
 	JSONIndent string
 }
 
@@ -84,12 +81,6 @@ func writeJSON(w http.ResponseWriter, thing interface{}, indent string) {
 	if err := encoder.Encode(thing); err != nil {
 		apiLog.Infof("JSON encode error: %v", err)
 	}
-}
-
-func writeText(w http.ResponseWriter, str string) {
-	w.Header().Set("Content-Type", "text/html; charset=utf-8")
-	w.WriteHeader(http.StatusOK)
-	io.WriteString(w, str)
 }
 
 // Insight API error response for a BAD REQUEST.  This means the request was
@@ -412,16 +403,16 @@ func (c *insightApiContext) getTransactions(w http.ResponseWriter, r *http.Reque
 		txcount := len(blkTrans.RawTx) + len(blkTrans.RawSTx)
 		// Merge tx and stx together and limit result to 10 max
 		count := 0
-		for _, tx := range blkTrans.RawTx {
-			txsOld = append(txsOld, &tx)
+		for i := range blkTrans.RawTx {
+			txsOld = append(txsOld, &blkTrans.RawTx[i])
 			count++
 			if count > 10 {
 				break
 			}
 		}
 		if count < 10 {
-			for _, tx := range blkTrans.RawSTx {
-				txsOld = append(txsOld, &tx)
+			for i := range blkTrans.RawSTx {
+				txsOld = append(txsOld, &blkTrans.RawSTx[i])
 				count++
 				if count > 10 {
 					break
@@ -655,51 +646,45 @@ func (c *insightApiContext) getAddressBalance(w http.ResponseWriter, r *http.Req
 	writeJSON(w, addressInfo.TotalUnspent, c.getIndentQuery(r))
 }
 
-func (c *insightApiContext) getAddressTotalReceived(w http.ResponseWriter, r *http.Request) {
-	address := m.GetAddressCtx(r)
-	if address == "" {
-		http.Error(w, http.StatusText(422), 422)
-		return
+func (c *insightApiContext) getSyncInfo(w http.ResponseWriter, r *http.Request) {
+
+	blockChainHeight, err := c.nodeClient.GetBlockCount()
+
+	// To insure JSON encodes an error properly as a string or no error as null
+	// its easiest to use a pointer to a string.
+	var errorString *string
+	if err != nil {
+		s := err.Error()
+		errorString = &s
+	} else {
+		errorString = nil
 	}
 
-	addressInfo := c.BlockData.ChainDB.GetAddressBalance(address, 20, 0)
-	if addressInfo == nil {
-		http.Error(w, http.StatusText(422), 422)
-		return
-	}
-	totalReceived := addressInfo.TotalSpent + addressInfo.TotalUnspent
+	height := c.BlockData.GetHeight()
 
-	writeText(w, strconv.Itoa(int(totalReceived)))
-}
+	syncPercentage := int((float64(height) / float64(blockChainHeight)) * 100)
 
-func (c *insightApiContext) getAddressUnconfirmedBalance(w http.ResponseWriter, r *http.Request) {
-	address := m.GetAddressCtx(r)
-	if address == "" {
-		http.Error(w, http.StatusText(422), 422)
-		return
+	st := "syncing"
+	if syncPercentage == 100 {
+		st = "finished"
 	}
 
-	addressInfo := c.BlockData.ChainDB.GetAddressBalance(address, 20, 0)
-	if addressInfo == nil {
-		http.Error(w, http.StatusText(422), 422)
-		return
+	syncInfo := struct {
+		Status           string  `json:"status"`
+		BlockChainHeight int64   `json:"blockChainHeight"`
+		SyncPercentage   int     `json:"syncPercentage"`
+		Height           int     `json:"height"`
+		Error            *string `json:"error"`
+		Type             string  `json:"type"`
+	}{
+		st,
+		blockChainHeight,
+		syncPercentage,
+		height,
+		errorString,
+		"from RPC calls",
 	}
-	writeText(w, string(addressInfo.TotalUnspent))
-}
-
-func (c *insightApiContext) getAddressTotalSent(w http.ResponseWriter, r *http.Request) {
-	address := m.GetAddressCtx(r)
-	if address == "" {
-		http.Error(w, http.StatusText(422), 422)
-		return
-	}
-
-	addressInfo := c.BlockData.ChainDB.GetAddressBalance(address, 20, 0)
-	if addressInfo == nil {
-		http.Error(w, http.StatusText(422), 422)
-		return
-	}
-	writeText(w, strconv.Itoa(int(addressInfo.TotalSpent)))
+	writeJSON(w, syncInfo, c.getIndentQuery(r))
 }
 
 func (c *insightApiContext) getStatusInfo(w http.ResponseWriter, r *http.Request) {

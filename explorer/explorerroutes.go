@@ -16,7 +16,6 @@ import (
 	"github.com/decred/dcrd/chaincfg"
 	"github.com/decred/dcrd/chaincfg/chainhash"
 	"github.com/decred/dcrd/dcrutil"
-	"github.com/decred/dcrd/wire"
 	"github.com/decred/dcrdata/db/agendadb"
 	"github.com/decred/dcrdata/db/dbtypes"
 	"github.com/decred/dcrdata/txhelpers"
@@ -30,12 +29,10 @@ const (
 
 // netName returns the name used when referring to a decred network.
 func netName(chainParams *chaincfg.Params) string {
-	switch chainParams.Net {
-	case wire.TestNet2:
+	if strings.HasPrefix(strings.ToLower(chainParams.Name), "testnet") {
 		return "Testnet"
-	default:
-		return strings.Title(chainParams.Name)
 	}
+	return strings.Title(chainParams.Name)
 }
 
 // Home is the page handler for the "/" path
@@ -44,8 +41,9 @@ func (exp *explorerUI) Home(w http.ResponseWriter, r *http.Request) {
 
 	blocks := exp.blockData.GetExplorerBlocks(height, height-5)
 
-	exp.NewBlockDataMtx.Lock()
+	// Lock for both MempoolData and ExtraInfo
 	exp.MempoolData.RLock()
+	exp.NewBlockDataMtx.RLock()
 
 	str, err := exp.templates.execTemplateToString("home", struct {
 		Info    *HomeInfo
@@ -60,8 +58,38 @@ func (exp *explorerUI) Home(w http.ResponseWriter, r *http.Request) {
 		exp.Version,
 		exp.NetName,
 	})
-	exp.NewBlockDataMtx.Unlock()
+
 	exp.MempoolData.RUnlock()
+	exp.NewBlockDataMtx.RUnlock()
+
+	if err != nil {
+		log.Errorf("Template execute failure: %v", err)
+		exp.StatusPage(w, defaultErrorCode, defaultErrorMessage, ErrorStatusType)
+		return
+	}
+	w.Header().Set("Content-Type", "text/html")
+	w.WriteHeader(http.StatusOK)
+	io.WriteString(w, str)
+}
+
+// SideChains is the page handler for the "/side" path
+func (exp *explorerUI) SideChains(w http.ResponseWriter, r *http.Request) {
+	sideBlocks, err := exp.explorerSource.SideChainBlocks()
+	if err != nil {
+		log.Errorf("Unable to get side chain blocks: %v", err)
+		exp.StatusPage(w, defaultErrorCode, "failed to retrieve side chain blocks", ErrorStatusType)
+		return
+	}
+
+	str, err := exp.templates.execTemplateToString("sidechains", struct {
+		Data    []*dbtypes.BlockStatus
+		Version string
+		NetName string
+	}{
+		sideBlocks,
+		exp.Version,
+		exp.NetName,
+	})
 
 	if err != nil {
 		log.Errorf("Template execute failure: %v", err)
@@ -98,6 +126,17 @@ func (exp *explorerUI) Blocks(w http.ResponseWriter, r *http.Request) {
 		log.Errorf("Unable to get blocks: height=%d&rows=%d", height, rows)
 		exp.StatusPage(w, defaultErrorCode, "could not find those blocks", NotFoundStatusType)
 		return
+	}
+
+	if !exp.liteMode {
+		for _, s := range summaries {
+			blockStatus, err := exp.explorerSource.BlockStatus(s.Hash)
+			if err != nil && err != sql.ErrNoRows {
+				log.Warnf("Unable to retrieve chain status for block %s: %v", s.Hash, err)
+			}
+			s.Valid = blockStatus.IsValid
+			s.MainChain = blockStatus.IsMainchain
+		}
 	}
 
 	str, err := exp.templates.execTemplateToString("explorer", struct {
@@ -152,6 +191,14 @@ func (exp *explorerUI) Block(w http.ResponseWriter, r *http.Request) {
 		if err != nil && err != sql.ErrNoRows {
 			log.Warnf("Unable to retrieve missed votes for block %s: %v", hash, err)
 		}
+
+		var blockStatus dbtypes.BlockStatus
+		blockStatus, err = exp.explorerSource.BlockStatus(hash)
+		if err != nil && err != sql.ErrNoRows {
+			log.Warnf("Unable to retrieve chain status for block %s: %v", hash, err)
+		}
+		data.Valid = blockStatus.IsValid
+		data.MainChain = blockStatus.IsMainchain
 	}
 
 	pageData := struct {
@@ -161,7 +208,7 @@ func (exp *explorerUI) Block(w http.ResponseWriter, r *http.Request) {
 		NetName       string
 	}{
 		data,
-		exp.NewBlockData.Height - data.Confirmations,
+		exp.Height() - data.Confirmations,
 		exp.Version,
 		exp.NetName,
 	}
@@ -196,6 +243,54 @@ func (exp *explorerUI) Mempool(w http.ResponseWriter, r *http.Request) {
 		exp.StatusPage(w, defaultErrorCode, defaultErrorMessage, ErrorStatusType)
 		return
 	}
+	w.Header().Set("Content-Type", "text/html")
+	w.WriteHeader(http.StatusOK)
+	io.WriteString(w, str)
+}
+
+// Ticketpool is the page handler for the "/ticketpool" path
+func (exp *explorerUI) Ticketpool(w http.ResponseWriter, r *http.Request) {
+	chartData, groupedTickets, err := exp.explorerSource.TicketPoolVisualization(
+		dbtypes.ChartGroupingFromStr("all"),
+	)
+	if err != nil {
+		log.Errorf("Template execute failure: %v", err)
+		exp.StatusPage(w, defaultErrorCode, defaultErrorMessage, ErrorStatusType)
+		return
+	}
+	var mp = dbtypes.PoolTicketsData{}
+	exp.MempoolData.RLock()
+	var mpData = exp.MempoolData
+
+	if len(mpData.Tickets) > 0 {
+		mp.Time = append(mp.Time, uint64(mpData.Tickets[0].Time))
+		mp.Price = append(mp.Price, mpData.Tickets[0].TotalOut)
+		mp.Mempool = append(mp.Mempool, uint64(len(mpData.Tickets)))
+	} else {
+		log.Debug("No tickets exist in the mempool")
+	}
+	exp.MempoolData.RUnlock()
+
+	str, err := exp.templates.execTemplateToString("ticketpool", struct {
+		Version     string
+		NetName     string
+		ChartData   []*dbtypes.PoolTicketsData
+		GroupedData *dbtypes.PoolTicketsData
+		Mempool     *dbtypes.PoolTicketsData
+	}{
+		exp.Version,
+		exp.NetName,
+		chartData,
+		groupedTickets,
+		&mp,
+	})
+
+	if err != nil {
+		log.Errorf("Template execute failure: %v", err)
+		exp.StatusPage(w, defaultErrorCode, defaultErrorMessage, ErrorStatusType)
+		return
+	}
+
 	w.Header().Set("Content-Type", "text/html")
 	w.WriteHeader(http.StatusOK)
 	io.WriteString(w, str)
@@ -320,7 +415,9 @@ func (exp *explorerUI) TxPage(w http.ResponseWriter, r *http.Request) {
 				// expiry in blocks - (number of blocks since ticket purchase -
 				// ticket maturity))
 				// C is the probability (chance)
+				exp.NewBlockDataMtx.RLock()
 				pVote := float64(exp.ChainParams.TicketsPerBlock) / float64(exp.ExtraInfo.PoolInfo.Size)
+				exp.NewBlockDataMtx.RUnlock()
 				tx.TicketInfo.Probability = 100 * (math.Pow(1-pVote,
 					float64(exp.ChainParams.TicketExpiry)-float64(blocksLive)))
 			}
@@ -334,7 +431,7 @@ func (exp *explorerUI) TxPage(w http.ResponseWriter, r *http.Request) {
 		NetName       string
 	}{
 		tx,
-		exp.NewBlockData.Height - tx.Confirmations,
+		exp.Height() - tx.Confirmations,
 		exp.Version,
 		exp.NetName,
 	}
@@ -359,6 +456,9 @@ func (exp *explorerUI) AddressPage(w http.ResponseWriter, r *http.Request) {
 		ConfirmHeight []int64
 		Version       string
 		NetName       string
+		OldestTxTime  int64
+		IsLiteMode    bool
+		ChartData     *dbtypes.ChartsData
 	}
 
 	// Get the address URL parameter, which should be set in the request context
@@ -399,6 +499,8 @@ func (exp *explorerUI) AddressPage(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	log.Debugf("Showing transaction types: %s (%d)", txntype, txnType)
+
+	var oldestTxBlockTime int64
 
 	// Retrieve address information from the DB and/or RPC
 	var addrData *AddressInfo
@@ -566,6 +668,21 @@ func (exp *explorerUI) AddressPage(w http.ResponseWriter, r *http.Request) {
 		addrData.Balance.NumUnspent += (numReceived - numSent)
 		addrData.Balance.TotalSpent += sent
 		addrData.Balance.TotalUnspent += (received - sent)
+
+		if err != nil {
+			log.Errorf("Unable to fetch transactions for the address %s: %v", address, err)
+			exp.StatusPage(w, defaultErrorCode, "transactions for that address not found",
+				NotFoundStatusType)
+			return
+		}
+
+		oldestTxBlockTime, err = exp.explorerSource.GetOldestTxBlockTime(address)
+		if err != nil {
+			log.Errorf("Unable to fetch oldest transactions block time %s: %v", address, err)
+			exp.StatusPage(w, defaultErrorCode, "oldest block time not found",
+				NotFoundStatusType)
+			return
+		}
 	}
 
 	// Set page parameters
@@ -574,8 +691,9 @@ func (exp *explorerUI) AddressPage(w http.ResponseWriter, r *http.Request) {
 	addrData.TxnType = txnType.String()
 
 	confirmHeights := make([]int64, len(addrData.Transactions))
+	bdHeight := exp.Height()
 	for i, v := range addrData.Transactions {
-		confirmHeights[i] = exp.NewBlockData.Height - int64(v.Confirmations)
+		confirmHeights[i] = bdHeight - int64(v.Confirmations)
 	}
 
 	sort.Slice(addrData.Transactions, func(i, j int) bool {
@@ -596,6 +714,8 @@ func (exp *explorerUI) AddressPage(w http.ResponseWriter, r *http.Request) {
 	pageData := AddressPageData{
 		Data:          addrData,
 		ConfirmHeight: confirmHeights,
+		IsLiteMode:    exp.liteMode,
+		OldestTxTime:  oldestTxBlockTime,
 		Version:       exp.Version,
 		NetName:       exp.NetName,
 	}

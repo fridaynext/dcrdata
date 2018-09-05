@@ -42,13 +42,13 @@ func (pgb *ChainDB) GetHeight() int {
 
 // SendRawTransaction attempts to decode the input serialized transaction,
 // passed as hex encoded string, and broadcast it, returning the tx hash.
-func (db *ChainDBRPC) SendRawTransaction(txhex string) (string, error) {
+func (pgb *ChainDBRPC) SendRawTransaction(txhex string) (string, error) {
 	msg, err := txhelpers.MsgTxFromHex(txhex)
 	if err != nil {
 		log.Errorf("SendRawTransaction failed: could not decode hex")
 		return "", err
 	}
-	hash, err := db.Client.SendRawTransaction(msg, true)
+	hash, err := pgb.Client.SendRawTransaction(msg, true)
 	if err != nil {
 		log.Errorf("SendRawTransaction failed: %v", err)
 		return "", err
@@ -113,7 +113,7 @@ func (pgb *ChainDBRPC) GetTransactionHex(txid string) string {
 // GetBlockVerboseByHash returns a *dcrjson.GetBlockVerboseResult for the
 // specified block hash, optionally with transaction details.
 func (pgb *ChainDBRPC) GetBlockVerboseByHash(hash string, verboseTx bool) *dcrjson.GetBlockVerboseResult {
-	return rpcutils.GetBlockVerboseByHash(pgb.Client, pgb.ChainDB.chainParams,
+	return rpcutils.GetBlockVerboseByHash(pgb.Client, pgb.chainParams,
 		hash, verboseTx)
 }
 
@@ -121,7 +121,7 @@ func (pgb *ChainDBRPC) GetBlockVerboseByHash(hash string, verboseTx bool) *dcrjs
 // block with the specified hash.
 func (pgb *ChainDBRPC) GetTransactionsForBlockByHash(hash string) *apitypes.BlockTransactions {
 	blockVerbose := rpcutils.GetBlockVerboseByHash(
-		pgb.Client, pgb.ChainDB.chainParams, hash, false)
+		pgb.Client, pgb.chainParams, hash, false)
 
 	return makeBlockTransactions(blockVerbose)
 }
@@ -185,10 +185,10 @@ func (pgb *ChainDB) GetAddressUTXO(address string) []apitypes.AddressTxnOutput {
 	return txnOutput
 }
 
-// GetAddressSpendByFunHash will return the address that fundex a tx
-func (pgb *ChainDB) GetAddressSpendByFunHash(addresses []string, fundHash string) []*apitypes.AddressSpendByFunHash {
-
-	AddrRow, err := RetrieveAddressTxnsByFundingTx(pgb.db, fundHash, addresses)
+// GetSpendDetailsByFundingHash will return the spending details (tx, index,
+// block height) by funding transaction
+func (pgb *ChainDB) GetSpendDetailsByFundingHash(fundHash string) []*apitypes.SpendByFundingHash {
+	AddrRow, err := RetrieveSpendingTxsByFundingTxWithBlockHeight(pgb.db, fundHash)
 	if err != nil {
 		log.Error(err)
 		return nil

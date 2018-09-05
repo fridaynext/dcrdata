@@ -31,12 +31,49 @@ const (
 	transactionsTableMainchainUpgrade
 	addressesTableMainchainUpgrade
 	votesTableMainchainUpgrade
+	ticketsTableMainchainUpgrade
+	votesTableBlockHashIndex
+	vinsTxHistogramUpgrade
+	addressesTxHistogramUpgrade
+	agendasVotingMilestonesUpgrade
+	ticketsTableBlockTimeUpgrade
 )
 
 type TableUpgradeType struct {
 	TableName   string
 	upgradeType tableUpgradeType
 }
+
+// VinVoutTypeUpdateData defines the fetched details from the transactions table that
+// are needed to undertake the histogram upgrade.
+type VinVoutTypeUpdateData struct {
+	VinsDbIDs  dbtypes.UInt64Array
+	VoutsDbIDs dbtypes.UInt64Array
+	TxType     stake.TxType
+}
+
+// VotingMilestones defines the various milestones phases have taken place when
+// the agendas have been up for voting. Only sdiffalgorithm, lnsupport and
+// lnfeatures agenda ids exist since appropriate voting mechanisms on the dcrd
+// level are not yet fully implemented.
+var VotingMilestones = map[string]dbtypes.MileStone{
+	"sdiffalgorithm": {
+		Activated:  149248,
+		HardForked: 149328,
+		LockedIn:   141184,
+	},
+	"lnsupport": {
+		Activated: 149248,
+		LockedIn:  141184,
+	},
+	"lnfeatures": {
+		Activated: 189568,
+		LockedIn:  181504,
+	},
+}
+
+// toVersion defines a table version to which the pg tables will commented to.
+var toVersion TableVersion
 
 // CheckForAuxDBUpgrade checks if an upgrade is required and currently supported.
 // A boolean value is returned to indicate if the db upgrade was
@@ -54,12 +91,12 @@ func (pgb *ChainDB) CheckForAuxDBUpgrade(dcrdClient *rpcclient.Client) (bool, er
 
 	// Apply each upgrade in succession
 	switch {
-	case upgradeInfo[0].UpgradeType != "upgrade":
+	case upgradeInfo[0].UpgradeType != "upgrade" && upgradeInfo[0].UpgradeType != "reindex":
 		return false, nil
 
 	// Upgrade from 3.1.0 --> 3.2.0
 	case version.major == 3 && version.minor == 1 && version.patch == 0:
-		toVersion := TableVersion{3, 2, 0}
+		toVersion = TableVersion{3, 2, 0}
 		smartClient := rpcutils.NewBlockGate(dcrdClient, 10)
 
 		theseUpgrades := []TableUpgradeType{
@@ -67,17 +104,9 @@ func (pgb *ChainDB) CheckForAuxDBUpgrade(dcrdClient *rpcclient.Client) (bool, er
 			{"vins", vinsTableCoinSupplyUpgrade},
 		}
 
-		for it := range theseUpgrades {
-			upgradeSuccess, err := pgb.handleUpgrades(smartClient, theseUpgrades[it].upgradeType)
-			if err != nil || !upgradeSuccess {
-				return false, fmt.Errorf("failed to upgrade %s table to version %v. Error: %v",
-					theseUpgrades[it].TableName, toVersion, err)
-			}
-		}
-
-		// Bump version
-		if err := versionAllTables(pgb.db, toVersion); err != nil {
-			return false, fmt.Errorf("failed to bump version to %v: %v", toVersion, err)
+		isSuccess, er := pgb.initiatePgUpgrade(smartClient, theseUpgrades)
+		if !isSuccess {
+			return isSuccess, er
 		}
 
 		// Go on to next upgrade
@@ -85,7 +114,7 @@ func (pgb *ChainDB) CheckForAuxDBUpgrade(dcrdClient *rpcclient.Client) (bool, er
 
 	// Upgrade from 3.2.0 --> 3.3.0
 	case version.major == 3 && version.minor == 2 && version.patch == 0:
-		toVersion := TableVersion{3, 3, 0}
+		toVersion = TableVersion{3, 3, 0}
 		smartClient := rpcutils.NewBlockGate(dcrdClient, 10)
 
 		// The order of these upgrades is critical
@@ -97,24 +126,102 @@ func (pgb *ChainDB) CheckForAuxDBUpgrade(dcrdClient *rpcclient.Client) (bool, er
 			{"votes", votesTableMainchainUpgrade},
 		}
 
-		for it := range theseUpgrades {
-			upgradeSuccess, err := pgb.handleUpgrades(smartClient, theseUpgrades[it].upgradeType)
-			if err != nil || !upgradeSuccess {
-				return false, fmt.Errorf("failed to upgrade %s table to version %v. Error: %v",
-					theseUpgrades[it].TableName, toVersion, err)
-			}
+		isSuccess, er := pgb.initiatePgUpgrade(smartClient, theseUpgrades)
+		if !isSuccess {
+			return isSuccess, er
 		}
 
-		// Bump version
-		if err := versionAllTables(pgb.db, toVersion); err != nil {
-			return false, fmt.Errorf("failed to bump version to %v: %v", toVersion, err)
+		// Go on to next upgrade
+		fallthrough
+
+	// Upgrade from 3.3.0 --> 3.4.0
+	case version.major == 3 && version.minor == 3 && version.patch == 0:
+		toVersion = TableVersion{3, 4, 0}
+		smartClient := rpcutils.NewBlockGate(dcrdClient, 10)
+
+		// The order of these upgrades is critical
+		theseUpgrades := []TableUpgradeType{
+			{"tickets", ticketsTableMainchainUpgrade},
+		}
+
+		isSuccess, er := pgb.initiatePgUpgrade(smartClient, theseUpgrades)
+		if !isSuccess {
+			return isSuccess, er
+		}
+
+		// Go on to next upgrade
+		fallthrough
+
+	// Upgrade from 3.4.0 --> 3.4.1
+	case version.major == 3 && version.minor == 4 && version.patch == 0:
+		// This is a "reindex" upgrade. Bump patch.
+		toVersion = TableVersion{3, 4, 1}
+
+		// The order of these upgrades is critical
+		theseUpgrades := []TableUpgradeType{
+			{"votes", votesTableBlockHashIndex},
+		}
+
+		isSuccess, er := pgb.initiatePgUpgrade(nil, theseUpgrades)
+		if !isSuccess {
+			return isSuccess, er
+		}
+
+		// Go on to next upgrade
+		fallthrough
+
+	// Upgrade from 3.4.1 --> 3.5.0
+	case version.major == 3 && version.minor == 4 && version.patch == 1:
+		toVersion = TableVersion{3, 5, 0}
+
+		theseUpgrades := []TableUpgradeType{
+			{"vins", vinsTxHistogramUpgrade},
+			{"addresses", addressesTxHistogramUpgrade},
+		}
+
+		isSuccess, er := pgb.initiatePgUpgrade(nil, theseUpgrades)
+		if !isSuccess {
+			return isSuccess, er
+		}
+
+		// Go on to next upgrade
+		fallthrough
+
+	// Upgrade from 3.5.0 --> 3.5.1
+	case version.major == 3 && version.minor == 5 && version.patch == 0:
+		toVersion = TableVersion{3, 5, 1}
+
+		theseUpgrades := []TableUpgradeType{
+			{"agendas", agendasVotingMilestonesUpgrade},
+		}
+
+		isSuccess, er := pgb.initiatePgUpgrade(nil, theseUpgrades)
+		if !isSuccess {
+			return isSuccess, er
+		}
+
+		// Go on to next upgrade
+		fallthrough
+
+		// Upgrade from 3.5.1 --> 3.5.2
+	case version.major == 3 && version.minor == 5 && version.patch == 1:
+		toVersion = TableVersion{3, 5, 2}
+
+		theseUpgrades := []TableUpgradeType{
+			{"tickets", ticketsTableBlockTimeUpgrade},
+		}
+
+		isSuccess, er := pgb.initiatePgUpgrade(nil, theseUpgrades)
+		if !isSuccess {
+			return isSuccess, er
 		}
 
 		// Go on to next upgrade
 		// fallthrough
-		// or be done.
+		// or be done
+
 	default:
-		// UpgradeType == "upgrade", but no supported case.
+		// UpgradeType == "upgrade" or "reindex", but no supported case.
 		return false, fmt.Errorf("no upgrade path available for version %v --> %v",
 			version, needVersion)
 	}
@@ -127,6 +234,23 @@ func (pgb *ChainDB) CheckForAuxDBUpgrade(dcrdClient *rpcclient.Client) (bool, er
 
 	// Unsupported upgrades caught by default case, so we've succeeded.
 	log.Infof("Table upgrades completed.")
+	return true, nil
+}
+
+// initiatePgUpgrade starts the specific auxiliary database.
+func (pgb *ChainDB) initiatePgUpgrade(smartClient *rpcutils.BlockGate, theseUpgrades []TableUpgradeType) (bool, error) {
+	for it := range theseUpgrades {
+		upgradeSuccess, err := pgb.handleUpgrades(smartClient, theseUpgrades[it].upgradeType)
+		if err != nil || !upgradeSuccess {
+			return false, fmt.Errorf("failed to upgrade %s table to version %v. Error: %v",
+				theseUpgrades[it].TableName, toVersion, err)
+		}
+	}
+
+	// A Table upgrade must have happened therefore Bump version
+	if err := versionAllTables(pgb.db, toVersion); err != nil {
+		return false, fmt.Errorf("failed to bump version to %v: %v", toVersion, err)
+	}
 	return true, nil
 }
 
@@ -157,6 +281,9 @@ func (pgb *ChainDB) handleUpgrades(client *rpcutils.BlockGate,
 	case votesTableMainchainUpgrade:
 		tableReady, err = addVotesColumnsForMainchain(pgb.db)
 		tableName, upgradeTypeStr = "votes", "sidechain/reorg"
+	case ticketsTableMainchainUpgrade:
+		tableReady, err = addTicketsColumnsForMainchain(pgb.db)
+		tableName, upgradeTypeStr = "tickets", "sidechain/reorg"
 	case transactionsTableMainchainUpgrade:
 		tableReady, err = addTransactionsColumnsForMainchain(pgb.db)
 		tableName, upgradeTypeStr = "transactions", "sidechain/reorg"
@@ -164,6 +291,23 @@ func (pgb *ChainDB) handleUpgrades(client *rpcutils.BlockGate,
 		tableReady, err = haveEmptyAgendasTable(pgb.db)
 		tableName, upgradeTypeStr = "agendas", "new table"
 		i = 128000
+	case votesTableBlockHashIndex:
+		tableReady = true
+		tableName, upgradeTypeStr = "votes", "new index"
+	case vinsTxHistogramUpgrade:
+		tableReady, err = addVinsColumnsForHistogramUpgrade(pgb.db)
+		tableName, upgradeTypeStr = "vins", "tx-type addition/histogram"
+	case addressesTxHistogramUpgrade:
+		tableReady, err = addAddressesColumnsForHistogramUpgrade(pgb.db)
+		tableName, upgradeTypeStr = "addresses", "tx-type addition/histogram"
+	case agendasVotingMilestonesUpgrade:
+		// upgrade only important to all who have already done a fresh data
+		// migration between pg version 3.2.0 and 3.5.0.
+		tableReady = true
+		tableName, upgradeTypeStr = "agendas", "voting milestones"
+	case ticketsTableBlockTimeUpgrade:
+		tableReady = true
+		tableName, upgradeTypeStr = "tickets", "new index"
 	default:
 		return false, fmt.Errorf(`upgrade "%v" is unknown`, tableUpgrade)
 	}
@@ -185,7 +329,7 @@ func (pgb *ChainDB) handleUpgrades(client *rpcutils.BlockGate,
 		if err != nil {
 			return false, err
 		}
-		log.Infof("Found the best block at height: %v", height)
+		log.Infof("found the best block at height: %v", height)
 
 		// For each block on the main chain, perform upgrade operations
 		for ; i <= height; i++ {
@@ -220,56 +364,72 @@ func (pgb *ChainDB) handleUpgrades(client *rpcutils.BlockGate,
 		}
 
 	case blocksTableMainchainUpgrade:
+		var blockHash string
 		// blocks table upgrade proceeds from best block back to genesis
-		blockHash, err := pgb.HashDB()
+		_, blockHash, _, err = RetrieveBestBlockHeightAny(pgb.db)
 		if err != nil {
 			return false, fmt.Errorf("failed to retrieve best block from DB: %v", err)
 		}
+
 		log.Infof("Starting blocks table mainchain upgrade at block %s (working back to genesis)", blockHash)
 		rowsUpdated, err = pgb.handleBlocksTableMainchainUpgrade(blockHash)
-		if err != nil {
-			return false, fmt.Errorf(`upgrade of blocks table ended prematurely after %d blocks. `+
-				`Error: %v`, rowsUpdated, err)
-		}
+
 	case transactionsTableMainchainUpgrade:
 		// transactions table upgrade handled entirely by the DB backend
 		log.Infof("Starting transactions table mainchain upgrade...")
 		rowsUpdated, err = pgb.handleTransactionsTableMainchainUpgrade()
-		if err != nil {
-			return false, fmt.Errorf(`upgrade of transactions table ended prematurely after %d transactions. `+
-				`Error: %v`, rowsUpdated, err)
-		}
+
 	case vinsTableMainchainUpgrade:
 		// vins table upgrade handled entirely by the DB backend
 		log.Infof("Starting vins table mainchain upgrade...")
 		rowsUpdated, err = pgb.handleVinsTableMainchainupgrade()
-		if err != nil {
-			return false, fmt.Errorf(`upgrade of vins table ended prematurely after %d vins. `+
-				`Error: %v`, rowsUpdated, err)
-		}
+
 	case votesTableMainchainUpgrade:
 		// votes table upgrade handled entirely by the DB backend
 		log.Infof("Starting votes table mainchain upgrade...")
 		rowsUpdated, err = updateAllVotesMainchain(pgb.db)
-		if err != nil {
-			return false, fmt.Errorf(`upgrade of votes table ended prematurely after %d votes. `+
-				`Error: %v`, rowsUpdated, err)
-		}
+
+	case ticketsTableMainchainUpgrade:
+		// tickets table upgrade handled entirely by the DB backend
+		log.Infof("Starting tickets table mainchain upgrade...")
+		rowsUpdated, err = updateAllTicketsMainchain(pgb.db)
+
 	case addressesTableMainchainUpgrade:
 		// addresses table upgrade handled entirely by the DB backend
 		log.Infof("Starting addresses table mainchain upgrade...")
 		log.Infof("This an extremely I/O intensive operation on the database machine. It can take from 30-90 minutes.")
 		rowsUpdated, err = updateAllAddressesValidMainchain(pgb.db)
+
+	case votesTableBlockHashIndex, ticketsTableBlockTimeUpgrade:
+		// no upgrade, just "reindex"
+	case vinsTxHistogramUpgrade, addressesTxHistogramUpgrade:
+		var height uint64
+		// height is the best block where this table upgrade should stop at.
+		height, err = pgb.HeightDB()
 		if err != nil {
-			return false, fmt.Errorf(`upgrade of addresses table ended prematurely after %d address rows.`+
-				`Error: %v`, rowsUpdated, err)
+			return false, err
 		}
+
+		log.Infof("found the best block at height: %v", height)
+		rowsUpdated, err = pgb.handleTxTypeHistogramUpgrade(height, tableUpgrade)
+
+	case agendasVotingMilestonesUpgrade:
+		log.Infof("Set the agendas voting milestones...")
+		rowsUpdated, err = pgb.handleAgendasVotingMilestonesUpgrade()
+
 	default:
 		return false, fmt.Errorf(`upgrade "%v" unknown`, tableUpgrade)
 	}
 
-	log.Infof(" - %v rows in %s table (%s upgrade) were successfully upgraded in %.1f sec",
-		rowsUpdated, tableName, upgradeTypeStr, time.Since(timeStart).Seconds())
+	if err != nil {
+		return false, fmt.Errorf(`%s upgrade of %s table ended prematurely after %d rows.`+
+			`Error: %v`, upgradeTypeStr, tableName, rowsUpdated, err)
+	}
+
+	if rowsUpdated > 0 {
+		log.Infof(" - %v rows in %s table (%s upgrade) were successfully upgraded in %.2f sec",
+			rowsUpdated, tableName, upgradeTypeStr, time.Since(timeStart).Seconds())
+	}
 
 	// Indexes
 	switch tableUpgrade {
@@ -283,9 +443,45 @@ func (pgb *ChainDB) handleUpgrades(client *rpcutils.BlockGate,
 		if err = IndexAgendasTableOnBlockTime(pgb.db); err != nil {
 			return false, fmt.Errorf("failed to index agendas table: %v", err)
 		}
+	case votesTableBlockHashIndex:
+		log.Infof("Indexing votes table on block hash...")
+		if err = IndexVotesTableOnBlockHash(pgb.db); err != nil {
+			return false, fmt.Errorf("failed to index votes table on block_hash: %v", err)
+		}
+
+	case ticketsTableBlockTimeUpgrade:
+		log.Infof("Index the tickets table on Pool status...")
+		if err = IndexTicketsTableOnPoolStatus(pgb.db); err != nil {
+			return false, fmt.Errorf("failed to index tickets table: %v", err)
+		}
 	}
 
 	return true, nil
+}
+
+func (pgb *ChainDB) handleAgendasVotingMilestonesUpgrade() (int64, error) {
+	var errorLog = func(agenda, idType string, err error) {
+		if err != nil {
+			log.Warnf("%s height for agenda %s wasn't set:  %v", agenda, idType, err)
+		}
+	}
+
+	var rowsUpdated int64
+	for id, milestones := range VotingMilestones {
+		for name, val := range map[string]int64{
+			"activated":   milestones.Activated,
+			"locked_in":   milestones.LockedIn,
+			"hard_forked": milestones.HardForked,
+		} {
+			if val > 0 {
+				query := fmt.Sprintf("UPDATE agendas SET %v=true WHERE block_height=$1 AND agenda_id=$2", name)
+				_, err := pgb.db.Exec(query, val, id)
+				errorLog(name, id, err)
+				rowsUpdated++
+			}
+		}
+	}
+	return rowsUpdated, nil
 }
 
 func (pgb *ChainDB) handleVinsTableMainchainupgrade() (int64, error) {
@@ -306,7 +502,7 @@ func (pgb *ChainDB) handleVinsTableMainchainupgrade() (int64, error) {
 
 		numUpd, err := pgb.upgradeVinsMainchainForMany(vinDbIDsBlk, areValid, areMainchain)
 		if err != nil {
-			log.Warnf("Unable to set valid/mainchain for vins: %v", err)
+			log.Warnf("unable to set valid/mainchain for vins: %v", err)
 		}
 		rowsUpdated += numUpd
 		if i%10000 == 0 {
@@ -348,6 +544,136 @@ func (pgb *ChainDB) upgradeVinsMainchainOneTxn(vinDbIDs dbtypes.UInt64Array,
 		if err != nil {
 			return 0, err
 		}
+		rowsUpdated += c
+	}
+
+	return rowsUpdated, nil
+}
+
+func (pgb *ChainDB) handleTxTypeHistogramUpgrade(bestBlock uint64, upgrade tableUpgradeType) (int64, error) {
+	var i, diff uint64
+	// diff is the payload process at once without using over using the memory
+	diff = 50000
+	var rowModified int64
+
+	// Indexing the addresses table
+	log.Infof("Indexing on addresses table just to hasten the update")
+	_, err := pgb.db.Exec("CREATE INDEX xxxxx_histogram ON addresses(tx_vin_vout_row_id, is_funding)")
+	if err != nil {
+		log.Warnf("histogram upgrade maybe slower since indexing failed: %v", err)
+	} else {
+		defer func() {
+			_, err = pgb.db.Exec("DROP INDEX xxxxx_histogram;")
+			if err != nil {
+				log.Warnf("droping the histogram index failed: %v", err)
+			}
+		}()
+	}
+
+	for i < bestBlock {
+		if (bestBlock - i) < diff {
+			diff = (bestBlock - i)
+		}
+		val := (i + 1)
+		i += diff
+
+		log.Infof(" - Retrieving data from txs table between height %d and %d ...", val, i)
+
+		rows, err := pgb.db.Query(internal.SelectTxsVinsAndVoutsIDs, val, i)
+		if err != nil {
+			return 0, err
+		}
+
+		var dbIDs = make([]VinVoutTypeUpdateData, 0)
+		for rows.Next() {
+			rowIDs := VinVoutTypeUpdateData{}
+			err = rows.Scan(&rowIDs.TxType, &rowIDs.VinsDbIDs, &rowIDs.VoutsDbIDs)
+			if err != nil {
+				return 0, err
+			}
+
+			dbIDs = append(dbIDs, rowIDs)
+		}
+
+		closeRows(rows)
+
+		switch upgrade {
+		case vinsTxHistogramUpgrade:
+			log.Infof("Populating vins table with data between height %d and %d ...", val, i)
+
+		case addressesTxHistogramUpgrade:
+			log.Infof("Populating addresses table with data between height %d and %d ...", val, i)
+
+		default:
+			return 0, fmt.Errorf("unsupported upgrade found: %v", upgrade)
+		}
+
+		for _, rowIDs := range dbIDs {
+			var vinsCount, voutsCount int64
+			switch upgrade {
+			case vinsTxHistogramUpgrade:
+				vinsCount, err = pgb.updateVinsTxTypeHistogramUpgrade(rowIDs.TxType,
+					rowIDs.VinsDbIDs)
+
+			case addressesTxHistogramUpgrade:
+				vinsCount, err = pgb.updateAddressesTxTypeHistogramUpgrade(rowIDs.TxType,
+					false, rowIDs.VinsDbIDs)
+				if err != nil {
+					return 0, err
+				}
+				voutsCount, err = pgb.updateAddressesTxTypeHistogramUpgrade(rowIDs.TxType, true,
+					rowIDs.VoutsDbIDs)
+			}
+
+			if err != nil {
+				return 0, err
+			}
+
+			rowModified += (vinsCount + voutsCount)
+		}
+
+	}
+	return rowModified, nil
+}
+
+func (pgb *ChainDB) updateVinsTxTypeHistogramUpgrade(txType stake.TxType,
+	vinIDs dbtypes.UInt64Array) (int64, error) {
+	var rowsUpdated int64
+
+	// each vin
+	for _, vinDbID := range vinIDs {
+		result, err := pgb.db.Exec(internal.SetTxTypeOnVinsByVinIDs, txType, vinDbID)
+		if err != nil {
+			return 0, err
+		}
+
+		c, err := result.RowsAffected()
+		if err != nil {
+			return 0, err
+		}
+
+		rowsUpdated += c
+	}
+
+	return rowsUpdated, nil
+}
+
+func (pgb *ChainDB) updateAddressesTxTypeHistogramUpgrade(txType stake.TxType,
+	isFunding bool, vinVoutRowIDs dbtypes.UInt64Array) (int64, error) {
+	var rowsUpdated int64
+
+	// each address entry with a vin db row id or with vout db row id
+	for _, rowDbID := range vinVoutRowIDs {
+		result, err := pgb.db.Exec(internal.SetTxTypeOnAddressesByVinAndVoutIDs,
+			txType, rowDbID, isFunding)
+		if err != nil {
+			return 0, err
+		}
+
+		c, err := result.RowsAffected()
+		if err != nil {
+			return 0, err
+		}
 
 		rowsUpdated += c
 	}
@@ -362,11 +688,23 @@ func updateAllVotesMainchain(db *sql.DB) (rowsUpdated int64, err error) {
 		"failed to update votes and mainchain status")
 }
 
+// updateAllTicketsMainchain sets is_mainchain for all tickets according to
+// their containing block.
+func updateAllTicketsMainchain(db *sql.DB) (rowsUpdated int64, err error) {
+	return sqlExec(db, internal.UpdateTicketsMainchainAll,
+		"failed to update tickets and mainchain status")
+}
+
 // updateAllTxnsValidMainchain sets is_mainchain and is_valid for all
 // transactions according to their containing block.
 func updateAllTxnsValidMainchain(db *sql.DB) (rowsUpdated int64, err error) {
-	return sqlExec(db, internal.UpdateTxnsValidMainchainAll,
-		"failed to update transactions validity and mainchain status")
+	rowsUpdated, err = sqlExec(db, internal.UpdateRegularTxnsValidAll,
+		"failed to update regular transactions' validity status")
+	if err != nil {
+		return
+	}
+	return sqlExec(db, internal.UpdateTxnsMainchainAll,
+		"failed to update all transactions' mainchain status")
 }
 
 // updateAllAddressesValidMainchain sets valid_mainchain for all addresses table
@@ -458,22 +796,6 @@ func (pgb *ChainDB) handlevinsTableCoinSupplyUpgrade(msgBlock *wire.MsgBlock) (i
 
 // handleAgendasTableUpgrade implements the upgrade to the newly added agenda table.
 func (pgb *ChainDB) handleAgendasTableUpgrade(msgBlock *wire.MsgBlock) (int64, error) {
-	milestones := map[string]dbtypes.MileStone{
-		"sdiffalgorithm": {
-			Activated:  149248,
-			HardForked: 149328,
-			LockedIn:   141184,
-		},
-		"lnsupport": {
-			Activated: 149248,
-			LockedIn:  141184,
-		},
-		"lnfeatures": {
-			Activated: 189568,
-			LockedIn:  181504,
-		},
-	}
-
 	// neither isValid or isMainchain are important
 	dbTxns, _, _ := dbtypes.ExtractBlockTransactions(msgBlock,
 		wire.TxTreeStake, pgb.chainParams, true, false)
@@ -492,7 +814,7 @@ func (pgb *ChainDB) handleAgendasTableUpgrade(msgBlock *wire.MsgBlock) (int64, e
 		var rowID uint64
 		for _, val := range choices {
 			// check if agenda id exists, if not it skips to the next agenda id
-			var progress, ok = milestones[val.ID]
+			var progress, ok = VotingMilestones[val.ID]
 			if !ok {
 				log.Debugf("The Agenda ID: '%s' is unknown", val.ID)
 				continue
@@ -578,6 +900,23 @@ func addNewColumnsIfNotFound(db *sql.DB, table string, newColumns []newColumn) (
 	return true, nil
 }
 
+func addVinsColumnsForHistogramUpgrade(db *sql.DB) (bool, error) {
+	// The new columns and their data types
+	newColumns := []newColumn{
+		{"tx_type", "INT4", ""},
+	}
+
+	return addNewColumnsIfNotFound(db, "vins", newColumns)
+}
+
+func addAddressesColumnsForHistogramUpgrade(db *sql.DB) (bool, error) {
+	// The new columns and their data types
+	newColumns := []newColumn{
+		{"tx_type", "INT4", ""},
+	}
+	return addNewColumnsIfNotFound(db, "addresses", newColumns)
+}
+
 func addVinsColumnsForCoinSupply(db *sql.DB) (bool, error) {
 	// The new columns and their data types
 	newColumns := []newColumn{
@@ -610,6 +949,14 @@ func addVotesColumnsForMainchain(db *sql.DB) (bool, error) {
 		{"is_mainchain", "BOOLEAN", ""},
 	}
 	return addNewColumnsIfNotFound(db, "votes", newColumns)
+}
+
+func addTicketsColumnsForMainchain(db *sql.DB) (bool, error) {
+	// The new columns and their data types
+	newColumns := []newColumn{
+		{"is_mainchain", "BOOLEAN", ""},
+	}
+	return addNewColumnsIfNotFound(db, "tickets", newColumns)
 }
 
 func addTransactionsColumnsForMainchain(db *sql.DB) (bool, error) {
