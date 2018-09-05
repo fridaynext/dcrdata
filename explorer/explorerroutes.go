@@ -16,10 +16,10 @@ import (
 	"github.com/decred/dcrd/chaincfg"
 	"github.com/decred/dcrd/chaincfg/chainhash"
 	"github.com/decred/dcrd/dcrutil"
-	"github.com/decred/dcrdata/db/agendadb"
-	"github.com/decred/dcrdata/db/dbtypes"
-	"github.com/decred/dcrdata/txhelpers"
 	humanize "github.com/dustin/go-humanize"
+	"github.com/fridaynext/dcrdata/db/agendadb"
+	"github.com/fridaynext/dcrdata/db/dbtypes"
+	"github.com/fridaynext/dcrdata/txhelpers"
 )
 
 const (

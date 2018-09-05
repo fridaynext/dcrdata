@@ -9,7 +9,7 @@ import (
 	"time"
 
 	"github.com/decred/dcrd/blockchain/stake"
-	"github.com/decred/dcrdata/txhelpers"
+	"github.com/fridaynext/dcrdata/txhelpers"
 	humanize "github.com/dustin/go-humanize"
 )
 

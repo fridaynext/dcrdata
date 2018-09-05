@@ -8,9 +8,9 @@ import (
 	"sync"
 
 	"github.com/decred/dcrd/rpcclient"
-	"github.com/decred/dcrdata/db/dcrsqlite"
-	"github.com/decred/dcrdata/rpcutils"
-	"github.com/decred/dcrdata/stakedb"
+	"github.com/fridaynext/dcrdata/db/dcrsqlite"
+	"github.com/fridaynext/dcrdata/rpcutils"
+	"github.com/fridaynext/dcrdata/stakedb"
 	"github.com/decred/slog"
 )
 

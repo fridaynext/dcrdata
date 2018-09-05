@@ -3,7 +3,7 @@ package dcrsqlite
 import (
 	"testing"
 
-	"github.com/decred/dcrdata/testutil"
+	"github.com/fridaynext/dcrdata/testutil"
 	"github.com/decred/dcrd/chaincfg"
 )
 

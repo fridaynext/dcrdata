@@ -12,9 +12,9 @@ import (
 	"github.com/decred/dcrd/chaincfg"
 	"github.com/decred/dcrd/dcrutil"
 	"github.com/decred/dcrd/rpcclient"
-	apitypes "github.com/decred/dcrdata/api/types"
-	"github.com/decred/dcrdata/rpcutils"
-	"github.com/decred/dcrdata/txhelpers"
+	apitypes "github.com/fridaynext/dcrdata/api/types"
+	"github.com/fridaynext/dcrdata/rpcutils"
+	"github.com/fridaynext/dcrdata/txhelpers"
 	"github.com/decred/slog"
 )
 

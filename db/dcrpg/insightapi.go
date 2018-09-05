@@ -6,11 +6,11 @@ package dcrpg
 import (
 	"github.com/decred/dcrd/dcrjson"
 	"github.com/decred/dcrd/dcrutil"
-	apitypes "github.com/decred/dcrdata/api/types"
-	"github.com/decred/dcrdata/db/dbtypes"
-	"github.com/decred/dcrdata/explorer"
-	"github.com/decred/dcrdata/rpcutils"
-	"github.com/decred/dcrdata/txhelpers"
+	apitypes "github.com/fridaynext/dcrdata/api/types"
+	"github.com/fridaynext/dcrdata/db/dbtypes"
+	"github.com/fridaynext/dcrdata/explorer"
+	"github.com/fridaynext/dcrdata/rpcutils"
+	"github.com/fridaynext/dcrdata/txhelpers"
 )
 
 // GetRawTransaction gets a dcrjson.TxRawResult for the specified transaction

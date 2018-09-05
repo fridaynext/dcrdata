@@ -1,8 +1,8 @@
 # dcrdata
 
 [![Build Status](https://img.shields.io/travis/decred/dcrdata.svg)](https://travis-ci.org/decred/dcrdata)
-[![Latest tag](https://img.shields.io/github/tag/decred/dcrdata.svg)](https://github.com/decred/dcrdata/tags)
-[![Go Report Card](https://goreportcard.com/badge/github.com/decred/dcrdata)](https://goreportcard.com/report/github.com/decred/dcrdata)
+[![Latest tag](https://img.shields.io/github/tag/decred/dcrdata.svg)](https://github.com/fridaynext/dcrdata/tags)
+[![Go Report Card](https://goreportcard.com/badge/github.com/fridaynext/dcrdata)](https://goreportcard.com/report/github.com/fridaynext/dcrdata)
 [![ISC License](https://img.shields.io/badge/license-ISC-blue.svg)](http://copyfree.org)
 
 The dcrdata repository is a collection of Go packages and apps for [Decred](https://www.decred.org/) data collection, storage, and presentation.
@@ -143,18 +143,18 @@ _Note_: keep in mind the default container image we use to build was based off o
 
 Once the dcrdata image exist on your system just build dcrdata like so:
 
-- `git clone https://github.com/decred/dcrdata`
+- `git clone https://github.com/fridaynext/dcrdata`
 - `cd dcrdata`
 - `docker build --squash -t decred/dcrdata:dev-alpine .` [Only build the container image if neccessary](#building-the-image)
-- `docker run --entrypoint="" -v ${PWD}:/home/decred/go/src/github.com/decred/dcrdata --rm decred/dcrdata:dev-alpine go build`
+- `docker run --entrypoint="" -v ${PWD}:/home/decred/go/src/github.com/fridaynext/dcrdata --rm decred/dcrdata:dev-alpine go build`
 
 Once complete the dcrdata binary should be in your current directory
 
 Building for other platorms is accomplished via setting environment variables:
 
-`docker run -e GOOS=darwin -e GOARCH=amd64 --entrypoint="" -v ${PWD}:/home/decred/go/src/github.com/decred/dcrdata --rm decred/dcrdata:dev-alpine go build`
+`docker run -e GOOS=darwin -e GOARCH=amd64 --entrypoint="" -v ${PWD}:/home/decred/go/src/github.com/fridaynext/dcrdata --rm decred/dcrdata:dev-alpine go build`
 
-`docker run -e GOOS=windows -e GOARCH=amd64 --entrypoint="" -v ${PWD}:/home/decred/go/src/github.com/decred/dcrdata --rm decred/dcrdata:dev-alpine go build`
+`docker run -e GOOS=windows -e GOARCH=amd64 --entrypoint="" -v ${PWD}:/home/decred/go/src/github.com/fridaynext/dcrdata --rm decred/dcrdata:dev-alpine go build`
 
 _Note_: if you want to run these in the background add a `-d` after the docker run `docker run -d -e GOOS=windows -e GOARCH=amd64 --entrypoint="" ...`
 
@@ -176,7 +176,7 @@ need to get used to.
 When working in a container you want your source code from your docker host to be in the container.
 To do this you attach a volume to the container when running and the synchronization happens automatically.
 
-`docker run -ti --entrypoint="" -v ${PWD}:/home/decred/go/src/github.com/decred/dcrdata --rm decred/dcrdata:dev-alpine /bin/bash`
+`docker run -ti --entrypoint="" -v ${PWD}:/home/decred/go/src/github.com/fridaynext/dcrdata --rm decred/dcrdata:dev-alpine /bin/bash`
 
 _Note_: in the above line that we changed the entrypoint. This is to allow you to run commands in the container since the default container command is to run dcrdata. We also added /bin/bash at the end so the container executes this by default.
 
@@ -190,7 +190,7 @@ When you run dcrdata you will need to use a config file or pass [environment var
 
 With containers you can set these variables inside the container or at the [command line](https://docs.docker.com/engine/reference/run/#env-environment-variables).
 
-`docker run -ti --entrypoint=/bin/bash -e DCRDATA_LISTEN_URL=0.0.0.0:2222 -v ${PWD}:/home/decred/go/src/github.com/decred/dcrdata --rm decred/dcrdata:dev-alpine`
+`docker run -ti --entrypoint=/bin/bash -e DCRDATA_LISTEN_URL=0.0.0.0:2222 -v ${PWD}:/home/decred/go/src/github.com/fridaynext/dcrdata --rm decred/dcrdata:dev-alpine`
 
 There are minor differences when developing in a container but once you get used to them you will appreciate the power
 of consistency of empheral environments.
@@ -224,7 +224,7 @@ The following instructions assume a Unix-like shell (e.g. bash).
 
 - Clone the dcrdata repository. It **must** be cloned into the following directory.
 
-      git clone https://github.com/decred/dcrdata $GOPATH/src/github.com/decred/dcrdata
+      git clone https://github.com/fridaynext/dcrdata $GOPATH/src/github.com/fridaynext/dcrdata
 
 Once go is installed and the dcrdata project is cloned proceed to the build steps.
 
@@ -264,7 +264,7 @@ Building with the `dep` dependency management tool.
 
 - Fetch dependencies, and build the `dcrdata` executable.
 
-      cd $GOPATH/src/github.com/decred/dcrdata
+      cd $GOPATH/src/github.com/fridaynext/dcrdata
       dep ensure -vendor-only
       # build dcrdata executable in workspace:
       go build
@@ -276,7 +276,7 @@ _Note_ we recommend upgrading to [go 1.11](#building-with-go-111) or using the d
 In addition to the instructions above you can also build with the git commit hash appended to the version, set it as follows:
 
 ```bash
-go build -ldflags "-X github.com/decred/dcrdata/version.CommitHash=`git describe --abbrev=8 --long | awk -F "-" '{print $(NF-1)"-"$NF}'`"
+go build -ldflags "-X github.com/fridaynext/dcrdata/version.CommitHash=`git describe --abbrev=8 --long | awk -F "-" '{print $(NF-1)"-"$NF}'`"
 ```
 
 The sqlite driver uses cgo, which requires a C compiler (e.g. gcc) to compile
@@ -302,7 +302,7 @@ executable. Set read-only permissions as appropriate.
 
 First, update the repository (assuming you have `master` checked out):
 
-    cd $GOPATH/src/github.com/decred/dcrdata
+    cd $GOPATH/src/github.com/fridaynext/dcrdata
     git pull origin master
     dep ensure -vendor-only
     go build
@@ -802,7 +802,7 @@ of objects implementing the `MempoolDataSaver` interface.
 
 ## Plans
 
-See the GitHub issue tracker and the [project milestones](https://github.com/decred/dcrdata/milestones).
+See the GitHub issue tracker and the [project milestones](https://github.com/fridaynext/dcrdata/milestones).
 
 ## Contributing
 
@@ -812,7 +812,7 @@ Yes, please! See the CONTRIBUTING.md file for details, but here's the gist of it
 2. Create a branch for your work (`git branch -b cool-stuff`).
 3. Code something great.
 4. Commit and push to your repo.
-5. Create a [pull request](https://github.com/decred/dcrdata/compare).
+5. Create a [pull request](https://github.com/fridaynext/dcrdata/compare).
 
 **DO NOT merge from master to your feature branch; rebase.**
 

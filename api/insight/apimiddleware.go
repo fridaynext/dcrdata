@@ -13,8 +13,8 @@ import (
 	"strconv"
 
 	"github.com/decred/dcrd/chaincfg/chainhash"
-	apitypes "github.com/decred/dcrdata/api/types"
-	m "github.com/decred/dcrdata/middleware"
+	apitypes "github.com/fridaynext/dcrdata/api/types"
+	m "github.com/fridaynext/dcrdata/middleware"
 	"github.com/go-chi/chi"
 )
 

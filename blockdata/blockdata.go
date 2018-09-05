@@ -14,9 +14,9 @@ import (
 	"github.com/decred/dcrd/dcrutil"
 	"github.com/decred/dcrd/rpcclient"
 	"github.com/decred/dcrd/wire"
-	apitypes "github.com/decred/dcrdata/api/types"
-	"github.com/decred/dcrdata/stakedb"
-	"github.com/decred/dcrdata/txhelpers"
+	apitypes "github.com/fridaynext/dcrdata/api/types"
+	"github.com/fridaynext/dcrdata/stakedb"
+	"github.com/fridaynext/dcrdata/txhelpers"
 )
 
 // BlockData contains all the data collected by a Collector and stored

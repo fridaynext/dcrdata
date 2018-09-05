@@ -8,14 +8,14 @@ import (
 	"github.com/decred/dcrd/chaincfg/chainhash"
 	"github.com/decred/dcrd/dcrutil"
 
-	"github.com/decred/dcrdata/api/insight"
-	"github.com/decred/dcrdata/blockdata"
-	"github.com/decred/dcrdata/db/dcrpg"
-	"github.com/decred/dcrdata/db/dcrsqlite"
-	"github.com/decred/dcrdata/explorer"
-	"github.com/decred/dcrdata/mempool"
-	"github.com/decred/dcrdata/stakedb"
-	"github.com/decred/dcrdata/txhelpers"
+	"github.com/fridaynext/dcrdata/api/insight"
+	"github.com/fridaynext/dcrdata/blockdata"
+	"github.com/fridaynext/dcrdata/db/dcrpg"
+	"github.com/fridaynext/dcrdata/db/dcrsqlite"
+	"github.com/fridaynext/dcrdata/explorer"
+	"github.com/fridaynext/dcrdata/mempool"
+	"github.com/fridaynext/dcrdata/stakedb"
+	"github.com/fridaynext/dcrdata/txhelpers"
 )
 
 const (

@@ -11,8 +11,8 @@ import (
 	"time"
 
 	"github.com/decred/dcrd/chaincfg/chainhash"
-	"github.com/decred/dcrdata/db/dbtypes"
-	"github.com/decred/dcrdata/rpcutils"
+	"github.com/fridaynext/dcrdata/db/dbtypes"
+	"github.com/fridaynext/dcrdata/rpcutils"
 )
 
 const (

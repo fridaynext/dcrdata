@@ -15,10 +15,10 @@ import (
 	"github.com/decred/dcrd/dcrutil"
 	"github.com/decred/dcrd/txscript"
 	"github.com/decred/dcrd/wire"
-	apitypes "github.com/decred/dcrdata/api/types"
-	"github.com/decred/dcrdata/db/dbtypes"
-	"github.com/decred/dcrdata/db/dcrpg/internal"
-	"github.com/decred/dcrdata/txhelpers"
+	apitypes "github.com/fridaynext/dcrdata/api/types"
+	"github.com/fridaynext/dcrdata/db/dbtypes"
+	"github.com/fridaynext/dcrdata/db/dcrpg/internal"
+	"github.com/fridaynext/dcrdata/txhelpers"
 	"github.com/lib/pq"
 )
 

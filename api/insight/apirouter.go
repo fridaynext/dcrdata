@@ -8,7 +8,7 @@
 package insight
 
 import (
-	m "github.com/decred/dcrdata/middleware"
+	m "github.com/fridaynext/dcrdata/middleware"
 	"github.com/didip/tollbooth"
 	"github.com/didip/tollbooth_chi"
 	"github.com/go-chi/chi"

@@ -21,12 +21,12 @@ import (
 	"github.com/decred/dcrd/dcrjson"
 	"github.com/decred/dcrd/dcrutil"
 	"github.com/decred/dcrd/rpcclient"
-	apitypes "github.com/decred/dcrdata/api/types"
-	"github.com/decred/dcrdata/db/dbtypes"
-	"github.com/decred/dcrdata/db/dcrpg"
-	m "github.com/decred/dcrdata/middleware"
-	"github.com/decred/dcrdata/semver"
-	"github.com/decred/dcrdata/txhelpers"
+	apitypes "github.com/fridaynext/dcrdata/api/types"
+	"github.com/fridaynext/dcrdata/db/dbtypes"
+	"github.com/fridaynext/dcrdata/db/dcrpg"
+	m "github.com/fridaynext/dcrdata/middleware"
+	"github.com/fridaynext/dcrdata/semver"
+	"github.com/fridaynext/dcrdata/txhelpers"
 )
 
 // DataSourceLite specifies an interface for collecting data from the built-in

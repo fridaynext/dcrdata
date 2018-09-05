@@ -12,10 +12,10 @@ import (
 	"github.com/decred/dcrd/blockchain/stake"
 	"github.com/decred/dcrd/rpcclient"
 	"github.com/decred/dcrd/wire"
-	"github.com/decred/dcrdata/db/dbtypes"
-	"github.com/decred/dcrdata/db/dcrpg/internal"
-	"github.com/decred/dcrdata/rpcutils"
-	"github.com/decred/dcrdata/txhelpers"
+	"github.com/fridaynext/dcrdata/db/dbtypes"
+	"github.com/fridaynext/dcrdata/db/dcrpg/internal"
+	"github.com/fridaynext/dcrdata/rpcutils"
+	"github.com/fridaynext/dcrdata/txhelpers"
 )
 
 // tableUpgradeType defines the types of upgrades that currently exists and

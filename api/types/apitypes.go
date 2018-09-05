@@ -5,7 +5,7 @@ package types
 
 import (
 	"github.com/decred/dcrd/dcrjson"
-	"github.com/decred/dcrdata/txhelpers"
+	"github.com/fridaynext/dcrdata/txhelpers"
 )
 
 // much of the time, dcrdata will be using the types in dcrjson, but others are
