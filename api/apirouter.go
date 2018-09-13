@@ -49,10 +49,7 @@ func NewAPIRouter(app *appContext, userRealIP bool) apiMux {
 		r.Get("/balance-cool2", app.Wallet2.GetBalance)
 		r.Get("/balance-cool3", app.Wallet3.GetBalance)
 		r.Get("/balance-hot", app.Wallet4.GetBalance)
-		r.Get("/tickets-cool1", app.Wallet1.GetTickets)
-		r.Get("/tickets-cool2", app.Wallet2.GetTickets)
-		r.Get("/tickets-cool3", app.Wallet3.GetTickets)
-		r.Get("/tickets-hot", app.Wallet4.GetTickets)
+		r.Get("/tickets", app.getTixTransactions)
 	})
 
 	mux.Route("/block", func(r chi.Router) {

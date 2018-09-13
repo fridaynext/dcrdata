@@ -1,4 +1,4 @@
-// Copyright (c) 2018, The Decred developers
+// Copyight (c) 2018, The Decred developers
 // Copyright (c) 2017, The dcrdata developers
 // See LICENSE for details.
 
@@ -17,7 +17,6 @@ import (
 	"github.com/decred/dcrd/chaincfg"
 	"github.com/decred/dcrd/dcrjson"
 	"github.com/decred/dcrd/rpcclient"
-	"github.com/fridaynext/dcrdata/wallet"
 	apitypes "github.com/fridaynext/dcrdata/api/types"
 	"github.com/fridaynext/dcrdata/db/dbtypes"
 	"github.com/fridaynext/dcrdata/explorer"
@@ -25,6 +24,7 @@ import (
 	notify "github.com/fridaynext/dcrdata/notification"
 	"github.com/fridaynext/dcrdata/txhelpers"
 	appver "github.com/fridaynext/dcrdata/version"
+	"github.com/fridaynext/dcrdata/wallet"
 )
 
 // DataSourceLite specifies an interface for collecting data from the built-in
@@ -79,6 +79,7 @@ type DataSourceLite interface {
 	GetAddressTransactionsRawWithSkip(addr string, count, skip int) []*apitypes.AddressTxRaw
 	SendRawTransaction(txhex string) (string, error)
 	GetExplorerAddress(address string, count, offset int64) *explorer.AddressInfo
+	GetExplorerTx(txid string) *explorer.TxInfo
 }
 
 // DataSourceAux specifies an interface for advanced data collection using the
@@ -96,17 +97,26 @@ type DataSourceAux interface {
 		chartGroupings dbtypes.ChartGrouping) (*dbtypes.ChartsData, error)
 	GetTicketPoolByDateAndInterval(int64, dbtypes.ChartGrouping) (*dbtypes.PoolTicketsData, error)
 	GetTicketPoolBlockMaturity() int64
+	PoolStatusForTicket(txid string) (dbtypes.TicketSpendType, dbtypes.TicketPoolStatus, error)
 }
+
+// New Type for detailed results on ticket status (CASEY ADDITIONS)
+/*type ticketTx struct {
+	Tx               *apitypes.Tx
+	TicketSpendStatus string `json:"spend_status"`
+	TicketPoolStatus  string `json:"pool_status"`
+	VoteInfo	*apitypes.VoteInfo
+}*/
 
 // dcrdata application context used by all route handlers
 type appContext struct {
 	nodeClient    *rpcclient.Client
 	Params        *chaincfg.Params
 	BlockData     DataSourceLite
-	Wallet1	      *wallet.Wallet
-	Wallet2	      *wallet.Wallet
-	Wallet3	      *wallet.Wallet
-	Wallet4	      *wallet.Wallet
+	Wallet1       *wallet.Wallet
+	Wallet2       *wallet.Wallet
+	Wallet3       *wallet.Wallet
+	Wallet4       *wallet.Wallet
 	AuxDataSource DataSourceAux
 	LiteMode      bool
 	Status        apitypes.Status
@@ -131,7 +141,7 @@ func NewContext(client *rpcclient.Client, dcrwalletClient1 *wallet.Wallet, dcrwa
 		Wallet1:       dcrwalletClient1,
 		Wallet2:       dcrwalletClient2,
 		Wallet3:       dcrwalletClient3,
-	    	Wallet4:       dcrwalletClient4,
+		Wallet4:       dcrwalletClient4,
 		AuxDataSource: auxDataSource,
 		LiteMode:      liteMode,
 		Status: apitypes.Status{
@@ -489,6 +499,77 @@ func (c *appContext) getTransactions(w http.ResponseWriter, r *http.Request) {
 	writeJSON(w, txns, c.getIndentQuery(r))
 }
 
+func (c *appContext) getTixTransactions(w http.ResponseWriter, r *http.Request) {
+	txs1 := c.Wallet1.ListTransactions()
+	txs2 := c.Wallet2.ListTransactions()
+	txs3 := c.Wallet3.ListTransactions()
+	txs4 := c.Wallet4.ListTransactions()
+
+	all_txs := make([]dcrjson.ListTransactionsResult, 0, len(txs1)+len(txs2)+len(txs3)+len(txs4))
+	all_txs = append(txs1, txs2...)
+	all_txs = append(all_txs, txs3...)
+	all_txs = append(all_txs, txs4...)
+
+	// Remove duplicates from these TxID's, so the following api/app calls are fewer in number, therefore quicker!
+	encountered := map[string]dcrjson.ListTransactionsResult{}
+	for i, v := range all_txs {
+		encountered[all_txs[i].TxID] = v
+	}
+	all_txids := make([]dcrjson.ListTransactionsResult, 0, len(encountered))
+	for _, v := range encountered {
+		all_txids = append(all_txids, v)
+	}
+
+	if all_txids == nil {
+		http.Error(w, http.StatusText(422), 422)
+		return
+	}
+	txns := make([]*dcrjson.GetTransactionResult, len(all_txids))
+	for _, tx := range all_txids {
+		detailedTx := c.Wallet4.GetTransaction(tx.TxID)
+		if detailedTx == nil {
+			apiLog.Errorf("Unable to get detailed tx: %s", tx.TxID)
+		}
+		txns = append(txns, detailedTx)
+		/*		if *all_txs[i].TxType == "ticket" {
+						tix_spend, tix_pool, err := c.AuxDataSource.PoolStatusForTicket(all_txs[i].TxID)
+						if tx == nil {
+							apiLog.Errorf("Unable to get ticket transaction %s", all_txs[i].TxID)
+							http.Error(w, http.StatusText(422), 422)
+							return
+						}
+						if err != nil {
+							apiLog.Errorf("Unable to get ticket spend and pool status: %s", all_txs[i].TxID)
+							http.Error(w, http.StatusText(422), 422)
+							return
+						}
+						thisTx := ticketTx{
+							Tx:                tx,
+							TicketSpendStatus: tix_spend.String(),
+							TicketPoolStatus:  tix_pool.String(),
+							VoteInfo:	   nil,
+						}
+						txns = append(txns, thisTx)
+					} else if *all_txs[i].TxType == "vote" {
+						voteTx, err := c.BlockData.GetVoteInfo(all_txs[i].TxID)
+						if err != nil {
+							apiLog.Errorf("Unable to get vote transaction %s", all_txs[i].TxID)
+							http.Error(w, http.StatusText(422), 422)
+						}
+						votes = append(votes, voteTx)
+					}
+				}
+				for i := range txns {
+					txid = txns[i].Tx.txid
+					for _, vote := range votes {
+						if
+					}
+		*/
+	}
+
+	writeJSON(w, txns, c.getIndentQuery(r))
+}
+
 func (c *appContext) getDecodedTransactions(w http.ResponseWriter, r *http.Request) {
 	txids := m.GetTxnsCtx(r)
 	if txids == nil {
@@ -502,7 +583,6 @@ func (c *appContext) getDecodedTransactions(w http.ResponseWriter, r *http.Reque
 		if tx == nil {
 			apiLog.Errorf("Unable to get transaction %v", tx)
 			http.Error(w, http.StatusText(422), 422)
-			return
 		}
 		txns = append(txns, tx)
 	}

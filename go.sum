@@ -105,6 +105,7 @@ github.com/decred/dcrwallet/internal/helpers v1.0.0 h1:1vTGwaky26Wnqv+/L4RE6j4sZ
 github.com/decred/dcrwallet/internal/helpers v1.0.0/go.mod h1:FsihtjCyFrGL6gdmkxBWTYQ1CUgbfM9tyinYNOzLnlk=
 github.com/decred/dcrwallet/internal/zero v1.0.0 h1:MR6ky05JuVQ/3hiG3Wuuw47iHg5Bs/oVIHz3c1Lh6n0=
 github.com/decred/dcrwallet/internal/zero v1.0.0/go.mod h1:vULuNLRTcnifKCepcIxUDL4jrR3rJOwVR9UDH89Qpms=
+github.com/decred/dcrwallet/validate v1.0.0 h1:Sqc7ahL56VA+RsXo88zVA4WI9FzEh3DYrU9bRMjiw7I=
 github.com/decred/dcrwallet/validate v1.0.0/go.mod h1:zHIlcrjAWl6LK+X+R7jc3F9wIM/qxjtMjG/mdEwt4tY=
 github.com/decred/dcrwallet/wallet v1.0.0 h1:vZWfbcsw4QJqOvvWKHo6ls+apjmtqMnbuqf33w+arvk=
 github.com/decred/dcrwallet/wallet v1.0.0/go.mod h1:VWRnpNFRiKPo7FUPbzj0t5ElcGxNXMPIa4vGcGe94uM=
